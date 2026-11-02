@@ -3,7 +3,7 @@
 A local Go CLI that collects RSS/Atom feeds into SQLite and generates personal source-linked digests. V1 is complete when every v1 row in docs/features/digest/SPEC.md passes on Linux/macOS and release evidence is recorded.
 
 ## Status
-M0 merged in PR #7 (2026-11-02), with parent acceptance, independent attack fixes and Linux/macOS CI green. M1 merged in PR #11 (main 3587e9f): subscriptions/tags, bounded RSS/Atom fetch and OPML import/export. M2 calendar digests merged in PR #13 (main 8f12aad). M3 bounded cached model summaries merged via PR #14 at main bb89fcc with Linux/macOS CI green. M4 operational reliability and scheduling documentation are implemented awaiting parent review and Linux/macOS CI.
+M0 merged in PR #7 (2026-11-02), with parent acceptance, independent attack fixes and Linux/macOS CI green. M1 merged in PR #11 (main 3587e9f): subscriptions/tags, bounded RSS/Atom fetch and OPML import/export. M2 calendar digests merged in PR #13 (main 8f12aad). M3 bounded cached model summaries merged via PR #14 at main bb89fcc with Linux/macOS CI green. M4 merged via PR #15 at main 5886856 with Linux/macOS gates passed. M5 packaging and evaluation kit are implemented pending parent review; no release yet.
 
 ## Commands
 - `bash scripts/accept.sh` — canonical worker/reviewer/CI gate.

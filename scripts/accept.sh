@@ -4,7 +4,7 @@ set -eu
 cd "$(dirname "$0")/.."
 test -f go.mod
 test -d cmd/feeder
-test -z "$(gofmt -l cmd internal)"
+test -z "$(gofmt -l cmd internal scripts)"
 go vet ./...
 go test -race ./...
 scratch="$(mktemp -d)"
@@ -32,4 +32,5 @@ smoke --home "$scratch/state" digest --period weekly --output "$scratch/digest.m
 test -s "$scratch/digest.md"
 smoke --home "$scratch/state" feeds purge 1 --dry-run --json
 smoke --home "$scratch/state" feeds purge 1 --force --json
+go run ./scripts/evaluate --binary "$scratch/feeder" --out "$scratch/evaluation" --provider fixture
 echo "accept: ok"
