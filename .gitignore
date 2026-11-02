@@ -1,0 +1,7 @@
+/feeder
+/dist/
+/.scratch/
+*.db
+*.db-shm
+*.db-wal
+.env
