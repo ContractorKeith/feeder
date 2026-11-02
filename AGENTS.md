@@ -3,11 +3,11 @@
 A local Go CLI that collects RSS/Atom feeds into SQLite and generates personal source-linked digests. V1 is complete when every v1 row in docs/features/digest/SPEC.md passes on Linux/macOS and release evidence is recorded.
 
 ## Status
-Planning complete; M0 foundation next (2026-11-02).
+M0 foundation implemented (2026-11-02); review and Linux/macOS CI evidence pending. Feed/digest/model commands are not implemented.
 
 ## Commands
-- `bash scripts/accept.sh` — canonical worker/reviewer/CI gate; requires M0 implementation.
-- `go build ./cmd/feeder`, `go test -race ./...`, `go vet ./...` — available after M0.
+- `bash scripts/accept.sh` — canonical worker/reviewer/CI gate.
+- `go build ./cmd/feeder`, `go test -race ./...`, `go vet ./...` — local development checks.
 
 ## Pointers
 - docs/PLAN.md — milestone dependency ledger.
