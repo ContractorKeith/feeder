@@ -4,6 +4,7 @@ package app
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,15 +14,18 @@ import (
 	"github.com/ContractorKeith/feeder/internal/storage"
 )
 
-// Dependencies is the command/application test seam. HTTP is reserved for M1;
-// no request is made by the foundation commands.
+// Dependencies supplies clocks, HTTP transport, stdin and environment for commands.
 type Dependencies struct {
+	Stdin  io.Reader
 	Now    func() time.Time
 	HTTP   *http.Client
 	Getenv func(string) string
 }
 
 func (d Dependencies) WithDefaults() Dependencies {
+	if d.Stdin == nil {
+		d.Stdin = os.Stdin
+	}
 	if d.Now == nil {
 		d.Now = time.Now
 	}

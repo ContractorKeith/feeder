@@ -20,4 +20,13 @@ test ! -e "$scratch/info"
 smoke --home "$scratch/state" init --timezone UTC --json
 smoke --home "$scratch/state" config set limit 30 --json
 smoke --home "$scratch/state" config show --json
+smoke --home "$scratch/state" feeds add https://example.org/feed.xml --tag tech --json
+smoke --home "$scratch/state" feeds list --json
+smoke --home "$scratch/state" feeds tag 1 --tag go --json
+smoke --home "$scratch/state" export --output "$scratch/feeds.opml"
+smoke --home "$scratch/copy" import "$scratch/feeds.opml" --json
+smoke --home "$scratch/state" feeds remove 1 --json
+smoke --home "$scratch/state" fetch --json
+smoke --home "$scratch/state" feeds purge 1 --dry-run --json
+smoke --home "$scratch/state" feeds purge 1 --force --json
 echo "accept: ok"

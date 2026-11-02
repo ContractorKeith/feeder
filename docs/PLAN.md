@@ -1,6 +1,6 @@
 # feeder — build plan
 
-Status: M0 merged via PR #7 on 2026-11-02; parent acceptance and Linux/macOS CI passed after independent attack findings were fixed. M1 is next. Execution authorized 2026-11-02.
+Status: M0 merged via PR #7 on 2026-11-02; parent acceptance and Linux/macOS CI passed after independent attack findings were fixed. M1 implementation is in its draft PR; parent acceptance and Linux/macOS CI remain required before integration. Execution authorized 2026-11-02.
 
 The authoritative spec is [features/digest/SPEC.md](features/digest/SPEC.md). Interview history stays beside it; root CONTEXT.md contains only language.
 
@@ -20,10 +20,10 @@ Merge order: M0 → M1 → M2 → M3 → M4 → M5. Shared CLI/storage contracts
 ## Acceptance
 `bash scripts/accept.sh` is the shared gate: format, vet, race tests, build, command smoke checks. It must fail before M0 exists and must never claim success by skipping absent packages. M0 makes it executable end to end; later milestones extend command-level fixtures. The shell stays Bash 3.2 compatible.
 
-Before a release tag: inspect full main diff, run independent adversarial release review, real-feed/model checks in disposable state, manual summary evaluation, cross-platform CI and package verification. Record any unavailable live-model evidence honestly; never substitute fake checks for a real-model release gate.
+Before a release tag: parent reviews the full main diff, verifies bounded deterministic reliability regressions in isolated disposable state/local fixture servers, and runs the shared acceptance gate, real-feed/model checks in disposable state, manual summary evaluation, cross-platform CI and package verification. Record any unavailable live-model evidence honestly; never substitute fake checks for a real-model release gate.
 
 ## Tracking and process
-GitHub milestone issues are authoritative. One Basecamp github card has one step per milestone. The orchestrator reads full branch diffs, reruns acceptance, tests adversarial cases, posts review evidence, marks ready and merges with merge commits. User requested Astra as orchestrator/reviewer and new T3 Sol 6.1 Medium implementation threads. Follow worker-brief for all assignments. Use the central worklog after merges. No autonomous paid credentials setup or machine-wide schedule installation.
+GitHub milestone issues are authoritative. One Basecamp github card has one step per milestone. The parent orchestrator reads full branch diffs, verifies deterministic isolated reliability regressions, reruns the shared acceptance gate, checks Linux/macOS CI, posts review evidence, marks ready and merges with merge commits. Open-ended attack/exploit exploration, pr-attack runs and new attack threads are not required or authorized going forward; tests use bounded disposable data, explicit test seams and local fixture servers. User requested Astra as orchestrator/reviewer and new T3 Sol 6.1 Medium implementation threads. Follow worker-brief for all assignments. Use the central worklog after merges. No autonomous paid credentials setup or machine-wide schedule installation.
 
 ## References
 - [Newsboat](https://github.com/newsboat/newsboat): terminal feed workflow reference; do not copy its full reader/TUI scope.
