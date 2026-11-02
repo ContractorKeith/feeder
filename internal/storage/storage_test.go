@@ -104,3 +104,57 @@ func TestM0MigratesWithoutResettingLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestM2MigrationCachePurgeAndLedgerValidation(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	db, err := storage.Open(ctx, home, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := storage.Register(ctx, db, []storage.Feed{{URL: "https://example.org/rss"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = storage.CommitFetch(ctx, db, storage.Feed{ID: ids[0]}, []storage.Item{{Key: "one", Content: "keep", Hash: "hash"}}, time.Now(), "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reconstruct the exact prior schema, preserving its subscriptions and items.
+	if _, err = db.Exec("DROP TABLE summaries; DELETE FROM schema_migrations WHERE version=3; PRAGMA user_version=2"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	db, err = storage.Open(ctx, home, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	items, err := storage.Items(ctx, db)
+	if err != nil || len(items) != 1 || items[0].Content != "keep" {
+		t.Fatal(items, err)
+	}
+	if err = storage.SaveSummary(ctx, db, items[0].ID, "key", "summary"); err != nil {
+		t.Fatal(err)
+	}
+	if text, err := storage.Summary(ctx, db, items[0].ID, "key"); err != nil || text != "summary" {
+		t.Fatal(text, err)
+	}
+	if _, err = storage.Change(ctx, db, ids[0], "remove", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = storage.Change(ctx, db, ids[0], "purge", nil); err != nil {
+		t.Fatal(err)
+	}
+	if text, err := storage.Summary(ctx, db, items[0].ID, "key"); err != nil || text != "" {
+		t.Fatal("cache survived purge", text, err)
+	}
+	if _, err = db.Exec("DELETE FROM schema_migrations WHERE version=3"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if db, err = storage.Open(ctx, home, time.Now()); err == nil {
+		db.Close()
+		t.Fatal("accepted missing cache ledger")
+	}
+}

@@ -21,6 +21,7 @@ type problem struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	FeedID  int64  `json:"feed_id,omitempty"`
+	ItemID  int64  `json:"item_id,omitempty"`
 }
 type envelope struct {
 	SchemaVersion int       `json:"schema_version"`
@@ -112,8 +113,8 @@ Settings (environment equivalent is FEEDER_ + uppercase setting):
   lock_timeout: positive duration (10s)
 
 Precedence: explicit flags > supported FEEDER_* > saved config > defaults.
-FEEDER_HOME selects state; --home overrides it. FEEDER_API_KEY is reserved
-for summaries and is never read or printed by these commands.
+FEEDER_HOME selects state; --home overrides it. FEEDER_API_KEY supplies
+OpenAI summary credentials and is never read or printed by config commands.
 OpenAI requires an explicit endpoint; summarize=true requires a model.
 Set endpoint/model before enabling those settings. Overrides are never saved.`}
 	show := &cobra.Command{Use: "show", Short: "Show effective non-secret settings", Example: "  feeder config show --json", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {

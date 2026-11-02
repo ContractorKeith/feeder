@@ -105,7 +105,7 @@ func Open(ctx context.Context, home string, now time.Time) (*sql.DB, error) {
 	if err = tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 2 {
+	if version > 3 {
 		return fail(errors.New("database schema is newer than this feeder; upgrade feeder"))
 	}
 	if version == 0 {
@@ -137,7 +137,15 @@ PRAGMA user_version = 1;`, now.UTC().Format(time.RFC3339Nano))
 			return fail(err)
 		}
 	}
-	if err = validateSchema(ctx, tx, 2); err != nil {
+	if version < 3 {
+		if _, err = tx.ExecContext(ctx, summaryDDL); err != nil {
+			return fail(err)
+		}
+		if _, err = tx.ExecContext(ctx, "INSERT INTO schema_migrations VALUES (3, ?); PRAGMA user_version=3", now.UTC().Format(time.RFC3339Nano)); err != nil {
+			return fail(err)
+		}
+	}
+	if err = validateSchema(ctx, tx, 3); err != nil {
 		return fail(err)
 	}
 	if err = tx.Commit(); err != nil {
@@ -166,7 +174,7 @@ func OpenRead(ctx context.Context, home string) (*sql.DB, error) {
 	db.SetMaxOpenConns(1)
 	var version int
 	if err = db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err == nil {
-		if version != 1 && version != 2 {
+		if version != 1 && version != 2 && version != 3 {
 			err = errors.New("unsupported database schema")
 		} else {
 			err = validateSchema(ctx, db, version)

@@ -206,7 +206,7 @@ func TestDigestInvalidBeforeNetworkOrMutation(t *testing.T) {
 		{"--from", "2026-11-02"}, {"--from", "2026-02-30", "--to", "2026-03-01"}, {"--from", "", "--to", ""},
 		{"--period", "weekly", "--from", "2026-11-02", "--to", "2026-11-03"}, {"--period", "monthly"}, {"--timezone", "bad/zone"},
 		{"--limit", "0"}, {"--limit", "201"}, {"--feed", "0"}, {"--feed", "1.5"}, {"--feed", "999"}, {"--tag", ""},
-		{"--summarize"}, {"--summarize", "--model", "test"}, {"--output", filepath.Join(c.home, "feeder.db"), "--force"},
+		{"--summarize"}, {"--output", filepath.Join(c.home, "feeder.db"), "--force"},
 	} {
 		before, _ := json.Marshal(c.feeds()[0])
 		r := c.call(append([]string{"digest", "--json"}, args...)...)
