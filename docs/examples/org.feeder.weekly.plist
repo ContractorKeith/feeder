@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>org.feeder.weekly</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/sh</string>
+		<string>/Users/reader/feeder/run-feeder.sh</string>
+		<string>/Users/reader/bin/feeder</string>
+		<string>/Users/reader/feeder/state</string>
+		<string>UTC</string>
+		<string>/Users/reader/feeder/digests</string>
+		<string>weekly</string>
+		<string>10s</string>
+	</array>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Weekday</key>
+		<integer>1</integer>
+		<key>Hour</key>
+		<integer>7</integer>
+		<key>Minute</key>
+		<integer>20</integer>
+	</dict>
+	<key>StandardOutPath</key>
+	<string>/Users/reader/feeder/logs/weekly.out</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/reader/feeder/logs/weekly.err</string>
+</dict>
+</plist>

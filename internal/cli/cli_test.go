@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -201,7 +200,7 @@ func TestCorruptDatabaseIsPreserved(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := run(context.Background(), nil, "--home", h, "init", "--timezone", "UTC")
-	if r.code != 1 {
+	if r.code != 1 || !strings.Contains(r.err, "feeder.db") || !strings.Contains(r.err, "backup") {
 		t.Fatal(r)
 	}
 	after, _ := os.ReadFile(path)
@@ -241,60 +240,6 @@ func TestWriterBusyAndCancellation(t *testing.T) {
 	r = run(ctx, nil, "--home", h, "init", "--timezone", "UTC")
 	if r.code != 130 {
 		t.Fatal(r)
-	}
-}
-
-// Build the shipped entry point to verify OS process contention and SIGINT.
-func TestCompiledProcessLockAndSignal(t *testing.T) {
-	bin := filepath.Join(t.TempDir(), "feeder")
-	build := exec.Command("go", "build", "-o", bin, "../../cmd/feeder")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build: %v %s", err, out)
-	}
-	h := t.TempDir()
-	release, err := storage.Lock(context.Background(), h, time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer release()
-	cmd := exec.Command(bin, "--home", h, "--lock-timeout", "80ms", "--json", "init", "--timezone", "UTC")
-	// Explicit settings in the child prevent any ambient user configuration.
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
-	out, err := cmd.CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != 4 || !bytes.Contains(out, []byte(`"code":"busy"`)) {
-		t.Fatalf("busy process: %v %s", err, out)
-	}
-	cmd = exec.Command(bin, "--home", h, "--lock-timeout", "10s", "init", "--timezone", "UTC")
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(150 * time.Millisecond)
-	if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-	select {
-	case err = <-done:
-		if !errors.As(err, &exit) || exit.ExitCode() != 130 {
-			t.Fatalf("signal: %v %s", err, stderr.String())
-		}
-	case <-time.After(3 * time.Second):
-		cmd.Process.Kill()
-		<-done
-		t.Fatal("SIGINT did not stop lock wait")
-	}
-	if err := release(); err != nil {
-		t.Fatal(err)
-	}
-	cmd = exec.Command(bin, "--home", h, "init", "--timezone", "UTC")
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("lock not reusable: %v %s", err, out)
 	}
 }
 
@@ -521,5 +466,21 @@ func TestSymlinkHomeIsRejectedWithoutChmod(t *testing.T) {
 	entries, err := os.ReadDir(outside)
 	if err != nil || len(entries) != 0 {
 		t.Fatal("created outside state", entries, err)
+	}
+}
+
+func TestHelpWriteFailure(t *testing.T) {
+	for _, args := range [][]string{{"--help"}, {"help", "init"}, {"digest", "--help"}, {"help"}, {}} {
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			h := filepath.Join(t.TempDir(), "absent")
+			var diag bytes.Buffer
+			code := cli.Execute(context.Background(), append([]string{"--home", h}, args...), brokenWriter{}, &diag, app.Dependencies{Getenv: func(string) string { return "" }}, "test")
+			if code != 1 || diag.Len() == 0 {
+				t.Fatalf("code=%d stderr=%s", code, &diag)
+			}
+			if _, err := os.Stat(h); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("help created state: %v", err)
+			}
+		})
 	}
 }

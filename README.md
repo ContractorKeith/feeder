@@ -2,7 +2,7 @@
 
 A local Go CLI for collecting RSS/Atom feeds and producing personal source-linked digests. Feed excerpts are the default, with opt-in summaries through Ollama or an OpenAI-compatible endpoint.
 
-**Status:** M2 merged in PR #13 (main 8f12aad); M3 opt-in summaries implemented awaiting parent review. No v1 release yet. MIT licensed; Linux and macOS, pure-Go SQLite.
+**Status:** M3 opt-in summaries merged in PR #14 (main bb89fcc), Linux/macOS CI green; M4 reliability and scheduling documentation implemented awaiting parent review and Linux/macOS CI. No v1 release yet. MIT licensed; Linux and macOS, pure-Go SQLite.
 
 ```sh
 go build -o feeder ./cmd/feeder
@@ -104,6 +104,8 @@ For `init`, data is `{ "home": "...", "config": { ...effective settings... } }`;
 
 Tests use temporary state, injected clocks/HTTP clients/environment, fixture HTTP servers, and compiled subprocesses for contention and signals. `scripts/accept.sh` runs formatting, vet, race tests, a CGO-disabled build and isolated CLI smoke checks. CI runs that same gate on Linux and macOS. `golang.org/x/sys/unix` supplies descriptor-based OS advisory locks on Linux/macOS; the same validated descriptor is held through lock wait and release. Cobra owns parsing/help/completion and modernc SQLite avoids a CGO runtime dependency. M1 adds gofeed for real-world RSS/Atom parsing (and its parser dependencies), plus x/net/html for safe HTML-to-text extraction; both preserve the pure-Go build.
 
+- [External cron/launchd scheduling and exit handling](docs/scheduling.md)
+- [M4 reliability coverage map](docs/reliability.md)
 - [Product specification](docs/features/digest/SPEC.md)
 - [Build plan](docs/PLAN.md)
 - [Glossary](CONTEXT.md)
