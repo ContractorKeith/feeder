@@ -19,3 +19,35 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: bash scripts/accept.sh
+  package:
+    name: four-platform package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go run ./scripts/release build --version v0.0.0-rc.1 --out "$RUNNER_TEMP/release"
+      - run: bash scripts/package-smoke.sh "$RUNNER_TEMP/release" v0.0.0-rc.1
+      - run: go run ./scripts/release formula --version v0.0.0-rc.1 --out "$RUNNER_TEMP/release" > "$RUNNER_TEMP/feeder.rb"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-packages
+          path: ${{ runner.temp }}/release/
+          retention-days: 3
+  package-macos:
+    name: native macOS package smoke
+    needs: package
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: candidate-packages
+          path: ${{ runner.temp }}/release
+      - run: bash scripts/package-smoke.sh "$RUNNER_TEMP/release" v0.0.0-rc.1

@@ -1,0 +1,73 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  accept:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: bash scripts/accept.sh
+  package:
+    needs: accept
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build and validate four assets
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          go run ./scripts/release build --version "$RELEASE_VERSION" --out "$RUNNER_TEMP/release"
+          bash scripts/package-smoke.sh "$RUNNER_TEMP/release" "$RELEASE_VERSION"
+          go run ./scripts/release formula --version "$RELEASE_VERSION" --out "$RUNNER_TEMP/release" > "$RUNNER_TEMP/release/feeder.rb"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release/
+          retention-days: 3
+  native-macos:
+    needs: package
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release
+      - env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: bash scripts/package-smoke.sh "$RUNNER_TEMP/release" "$RELEASE_VERSION"
+  publish:
+    needs: [package, native-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release
+      - name: Publish verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_VERSION" --verify-tag --title "$RELEASE_VERSION" --notes 'Feed-provided personal digests. See README and release checklist for scope and evaluation evidence.' "$RUNNER_TEMP/release/"*

@@ -2,7 +2,7 @@
 
 A local Go CLI for collecting RSS/Atom feeds and producing personal source-linked digests. Feed excerpts are the default, with opt-in summaries through Ollama or an OpenAI-compatible endpoint.
 
-**Status:** M3 opt-in summaries merged in PR #14 (main bb89fcc), Linux/macOS CI green; M4 reliability and scheduling documentation implemented awaiting parent review and Linux/macOS CI. No v1 release yet. MIT licensed; Linux and macOS, pure-Go SQLite.
+**Status:** M0–M4 merged through main 5886856 with Linux/macOS gates passed. M5 packaging/evaluation kit pending parent review. No v1 release yet. MIT licensed; Linux and macOS, pure-Go SQLite.
 
 ```sh
 go build -o feeder ./cmd/feeder
@@ -111,3 +111,49 @@ Tests use temporary state, injected clocks/HTTP clients/environment, fixture HTT
 - [Glossary](CONTEXT.md)
 
 Not affiliated with other projects named feeder.
+
+## Install and uninstall
+
+No v1 release or Homebrew tap is published yet. For now, build from source using
+the pinned Go version in go.mod:
+
+```sh
+go build -trimpath -o feeder ./cmd/feeder
+mkdir -p "$HOME/.local/bin"
+install -m 0755 feeder "$HOME/.local/bin/feeder"
+export PATH="$HOME/.local/bin:$PATH"
+feeder --help
+```
+
+Persist that PATH in your shell configuration yourself if needed. Linux/macOS
+release archives will contain a single executable, MIT license, README and build
+metadata. After the parent publishes a release, download the matching OS/CPU
+archive and SHA256SUMS from that release, then verify **before** extraction:
+`sha256sum --check --ignore-missing SHA256SUMS` on Linux, or
+`shasum -a 256 --check SHA256SUMS` on macOS (download all four archives for a
+complete check, or check the matching checksum row). Extract into a new temporary
+directory and install its feeder as above. See [packaging/release checklist](docs/release.md)
+for exact asset names, locally testable formula generation and native smoke.
+Generated formulas use real archive hashes; a tap install command will be supplied
+only after the parent publishes a tap.
+
+For a disposable first run:
+
+```sh
+demo=$(mktemp -d)
+feeder --home "$demo/state" init --timezone UTC
+feeder --home "$demo/state" feeds add https://go.dev/blog/feed.atom
+feeder --home "$demo/state" fetch --json
+feeder --home "$demo/state" digest --from 2000-01-01 --to 2100-01-01 --include-baseline --limit 5
+```
+
+That wide range is useful only for a fresh demo home. In an ongoing collection,
+use actual calendar dates as described above. Feed content is never a verified
+full article. Summaries require explicit opt-in and an already configured model;
+see the [manual evaluation kit and disposable live smoke](docs/evaluation/README.md).
+
+Uninstall the manually installed executable with `rm "$HOME/.local/bin/feeder"`.
+For a future tap installation use `brew uninstall feeder`. Neither removes
+subscriptions or history. Stop any schedules you installed yourself using the
+[scheduling instructions](docs/scheduling.md). Back up state before intentionally
+removing it; removing the binary is enough to stop manual use.
