@@ -163,8 +163,9 @@ func fetchOne(ctx context.Context, client *http.Client, timeout time.Duration, f
 func completeFeedDocument(body []byte) error {
 	d := xml.NewDecoder(bytes.NewReader(bytes.TrimPrefix(body, []byte{0xef, 0xbb, 0xbf})))
 	d.CharsetReader = charset.NewReaderLabel
-	// Keep gofeed's tolerance for feed internals; enforce document boundaries.
-	d.Strict = false
+	// Strict XML tokenization rejects mismatched nesting instead of inserting
+	// synthetic closing tags; charset decoding and UTF-8 BOM support remain.
+	d.Strict = true
 	depth, roots := 0, 0
 	for {
 		token, err := d.Token()

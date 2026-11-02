@@ -25,7 +25,7 @@ M0 merged in PR #7 (2026-11-02), with parent acceptance, independent attack fixe
 - Commit as ContractorKeith only, conventional type prefix, no AI attribution.
 
 ## Tracking
-One milestone = one issue = one branch = one draft PR = one T3 worktree thread. M0 lands alone. Workers are gpt-6.1-sol, medium; no nested delegation. Astra orchestrates and reviews full diffs and reruns acceptance. Workers do not merge, tag, publish, or write the central worklog. Report PR URL, head SHA, checks/review state.
+One milestone = one issue = one branch = one draft PR = one T3 worktree thread. M0 lands alone. Workers are gpt-6.1-sol, medium; no nested delegation. Astra orchestrates and reviews full branch diffs, verifies bounded deterministic reliability regressions in disposable state/local fixture servers, and reruns the shared acceptance gate with Linux/macOS CI. Open-ended attack/exploit exploration and new attack threads are not part of this process. Workers do not merge, tag, publish, or write the central worklog. Report PR URL, head SHA, checks/review state.
 
 ## Out of Scope
 TUI, full-article scraping, semantic story merging, authenticated feeds, cloud sync, publishing, scheduler daemon, Windows, native Anthropic adapter.

@@ -453,3 +453,104 @@ func TestTrailingFeedDataDoesNotCommit(t *testing.T) {
 		})
 	}
 }
+
+func TestMismatchedFeedNestingPreservesCollection(t *testing.T) {
+	for _, fixture := range []struct{ name, bad, good string }{
+		{"rss", `<rss version="2.0"><channel><title>Fixture</title><item><guid>one</guid><title>Broken</title></channel></rss>`, rss(entry("one", "Valid", "content"))},
+		{"atom", `<feed xmlns="http://www.w3.org/2005/Atom"><title>Atom</title><entry><id>one</id><title>Broken</title></feed>`, `<feed xmlns="http://www.w3.org/2005/Atom"><title>Atom</title><entry><id>one</id><title>Valid</title><content>content</content></entry></feed>`},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			c := newCollection(t)
+			body := fixture.bad
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("ETag", "candidate")
+				w.Header().Set("Last-Modified", "Mon, 02 Nov 2026 12:00:00 GMT")
+				fmt.Fprint(w, body)
+			}))
+			defer server.Close()
+			success(t, c.call("feeds", "add", server.URL))
+			r := c.call("fetch", "--json")
+			if r.code != 3 {
+				t.Fatal("accepted mismatched XML nesting", r)
+			}
+			f := c.feeds()[0]
+			if f.Initialized || f.ETag != "" || f.Modified != "" || f.LastSuccess != "" || len(c.items()) != 0 {
+				t.Fatal("failed initial document committed state", f, c.items())
+			}
+			body = fixture.good
+			success(t, c.call("fetch"))
+			before := c.items()
+			f = c.feeds()[0]
+			if len(before) != 1 || !before[0].Baseline || !f.Initialized || f.ETag != "candidate" {
+				t.Fatal(f, before)
+			}
+			c.now = c.now.Add(time.Hour)
+			body = fixture.bad
+			r = c.call("fetch", "--json")
+			if r.code != 3 {
+				t.Fatal(r)
+			}
+			items := c.items()
+			after := c.feeds()[0]
+			if len(items) != 1 || items[0] != before[0] || after.ETag != f.ETag || after.Modified != f.Modified || after.LastSuccess != f.LastSuccess || !after.Initialized {
+				t.Fatal("mismatched response changed collection", after, items)
+			}
+		})
+	}
+}
+
+func TestValidFeedEncodingsStillCollect(t *testing.T) {
+	for _, fixture := range []struct{ name, body, content string }{
+		{"rss", rss(entry("one", "Valid", "text")), "text"},
+		{"atom", `<feed xmlns="http://www.w3.org/2005/Atom"><title>Atom</title><entry><id>one</id><title>Valid</title><content>text</content></entry></feed>`, "text"},
+		{"bom", "\xef\xbb\xbf" + rss(entry("one", "Valid", "text")), "text"},
+		{"latin1", "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><rss version=\"2.0\"><channel><title>Fixture</title><item><guid>one</guid><title>Valid</title><description>caf\xe9</description></item></channel></rss>", "café"},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			c := newCollection(t)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, fixture.body) }))
+			defer server.Close()
+			success(t, c.call("feeds", "add", server.URL))
+			success(t, c.call("fetch"))
+			items := c.items()
+			if len(items) != 1 || !items[0].Baseline || items[0].Content != fixture.content {
+				t.Fatal(items)
+			}
+		})
+	}
+}
+
+func TestInvalidURLPortsDoNotMutateSubscriptions(t *testing.T) {
+	for _, port := range []string{"0", "65536", "9999999999999999999999", ""} {
+		for _, command := range []string{"add", "import"} {
+			t.Run(command+"/"+port, func(t *testing.T) {
+				c := newCollection(t)
+				c.home = filepath.Join(t.TempDir(), "absent")
+				raw := "http://example.org:" + port + "/rss"
+				var r result
+				if command == "add" {
+					r = c.call("feeds", "add", raw)
+				} else {
+					c.stdin = `<opml><body><outline xmlUrl="http://example.org/valid"/><outline xmlUrl="` + raw + `"/></body></opml>`
+					r = c.call("import", "-")
+				}
+				if r.code != 2 {
+					t.Fatal("invalid port accepted", r)
+				}
+				if _, err := os.Stat(c.home); !os.IsNotExist(err) {
+					t.Fatal("invalid URL created state", err)
+				}
+			})
+		}
+	}
+}
+func TestURLPortBoundsRegisterWithoutFetching(t *testing.T) {
+	c := newCollection(t)
+	success(t, c.call("feeds", "add", "http://example.org:1/rss"))
+	c.stdin = `<opml><body><outline xmlUrl="http://example.org:65535/rss"/></body></opml>`
+	success(t, c.call("import", "-"))
+	feeds := c.feeds()
+	if len(feeds) != 2 || feeds[0].Initialized || feeds[1].Initialized {
+		t.Fatal(feeds)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -15,6 +16,14 @@ func FeedURL(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u == nil || u.Hostname() == "" || u.User != nil || u.Opaque != "" || (u.Scheme != "http" && u.Scheme != "https") {
 		return "", Invalid(errors.New("feed URL must be HTTP(S), with a host and without credentials"))
+	}
+	if port := u.Port(); port != "" {
+		n, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || n == 0 {
+			return "", Invalid(errors.New("feed URL port must be in 1..65535"))
+		}
+	} else if strings.HasSuffix(u.Host, ":") {
+		return "", Invalid(errors.New("feed URL port must be in 1..65535"))
 	}
 	u.Scheme = strings.ToLower(u.Scheme)
 	u.Host = strings.ToLower(u.Host)

@@ -2,84 +2,140 @@
 package output
 
 import (
+	"crypto/rand"
 	"errors"
 	"os"
 	"path/filepath"
+
+	"golang.org/x/sys/unix"
 )
 
-// Validate refuses state targets, aliases and nonregular destinations.
-func Validate(home, path string, force bool) error {
-	if path == "" {
-		return errors.New("output path must not be empty")
+var reserved = []string{"config.json", "feeder.db", "feeder.lock", "feeder.db-journal", "feeder.db-wal", "feeder.db-shm"}
+
+type destination struct {
+	dir   *os.File
+	home  *os.File
+	name  string
+	force bool
+}
+
+func openDirectory(path string) (*os.File, error) {
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
 	}
-	if path == "-" {
-		return nil
+	return os.NewFile(uintptr(fd), path), nil
+}
+func selectDestination(home, path string, force bool) (*destination, error) {
+	if path == "" || path == "-" {
+		return nil, errors.New("output file path must not be empty or -")
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	parent, err := filepath.EvalSymlinks(filepath.Dir(abs))
+	dir, err := openDirectory(filepath.Dir(abs))
 	if err != nil {
+		return nil, err
+	}
+	d := &destination{dir: dir, name: filepath.Base(abs), force: force}
+	d.home, err = openDirectory(home)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		d.close()
+		return nil, err
+	}
+	if err = d.check(); err != nil {
+		d.close()
+		return nil, err
+	}
+	return d, nil
+}
+func (d *destination) close() {
+	if d.home != nil {
+		d.home.Close()
+	}
+	d.dir.Close()
+}
+func sameFile(a, b unix.Stat_t) bool { return a.Dev == b.Dev && a.Ino == b.Ino }
+
+// check resolves only names relative to the selected directory descriptors.
+func (d *destination) check() error {
+	var target unix.Stat_t
+	err := unix.Fstatat(int(d.dir.Fd()), d.name, &target, unix.AT_SYMLINK_NOFOLLOW)
+	exists := err == nil
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	abs = filepath.Join(parent, filepath.Base(abs))
-	homeAbs, err := filepath.Abs(home)
-	if err != nil {
-		return err
+	if exists && target.Mode&unix.S_IFMT != unix.S_IFREG {
+		return errors.New("output must be a regular file")
 	}
-	// Resolve the longest existing ancestor, including when state is not created yet.
-	canonical := func(p string) string {
-		tail := []string{}
-		for {
-			if real, e := filepath.EvalSymlinks(p); e == nil {
-				for i := len(tail) - 1; i >= 0; i-- {
-					real = filepath.Join(real, tail[i])
+	if d.home != nil {
+		var dirInfo, homeInfo unix.Stat_t
+		if err = unix.Fstat(int(d.dir.Fd()), &dirInfo); err != nil {
+			return err
+		}
+		if err = unix.Fstat(int(d.home.Fd()), &homeInfo); err != nil {
+			return err
+		}
+		for _, name := range reserved {
+			if sameFile(dirInfo, homeInfo) && d.name == name {
+				return errors.New("output cannot replace feeder state")
+			}
+			if exists {
+				var stateInfo unix.Stat_t
+				err = unix.Fstatat(int(d.home.Fd()), name, &stateInfo, unix.AT_SYMLINK_NOFOLLOW)
+				if err != nil && !errors.Is(err, os.ErrNotExist) {
+					return err
 				}
-				return real
+				if err == nil && sameFile(target, stateInfo) {
+					return errors.New("output aliases feeder state")
+				}
 			}
-			next := filepath.Dir(p)
-			if next == p {
-				return p
-			}
-			tail = append(tail, filepath.Base(p))
-			p = next
 		}
 	}
-	homeAbs = canonical(homeAbs)
-	info, statErr := os.Lstat(abs)
-	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
-		return statErr
-	}
-	if info != nil {
-		if !info.Mode().IsRegular() {
-			return errors.New("output must be a regular file")
-		}
-		if !force {
-			return errors.New("output exists; use --force to overwrite")
-		}
-	}
-	for _, name := range []string{"config.json", "feeder.db", "feeder.lock", "feeder.db-journal", "feeder.db-wal", "feeder.db-shm"} {
-		target := filepath.Join(homeAbs, name)
-		if abs == target {
-			return errors.New("output cannot replace feeder state")
-		}
-		if stateInfo, e := os.Stat(target); e == nil && info != nil && os.SameFile(info, stateInfo) {
-			return errors.New("output aliases feeder state")
-		}
+	if exists && !d.force {
+		return errors.New("output exists; use --force to overwrite")
 	}
 	return nil
 }
-func Write(home, path string, force bool, data []byte) error {
-	if err := Validate(home, path, force); err != nil {
-		return err
+
+// Validate checks a destination without creating files; Write selects and checks
+// its own pinned directory before performing any output operations.
+func Validate(home, path string, force bool) error {
+	if path == "-" {
+		return nil
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".feeder-output-*")
+	d, err := selectDestination(home, path, force)
 	if err != nil {
 		return err
 	}
-	name := f.Name()
-	defer os.Remove(name)
+	d.close()
+	return nil
+}
+func Write(home, path string, force bool, data []byte) error {
+	return write(home, path, force, data, nil)
+}
+
+// afterSelect is a deterministic test seam after pinning and before creation.
+func write(home, path string, force bool, data []byte, afterSelect func() error) error {
+	d, err := selectDestination(home, path, force)
+	if err != nil {
+		return err
+	}
+	defer d.close()
+	if afterSelect != nil {
+		if err = afterSelect(); err != nil {
+			return err
+		}
+	}
+	dirFD := int(d.dir.Fd())
+	temp := ".feeder-output-" + rand.Text()
+	fd, err := unix.Openat(dirFD, temp, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0600)
+	if err != nil {
+		return err
+	}
+	defer unix.Unlinkat(dirFD, temp, 0)
+	f := os.NewFile(uintptr(fd), temp)
 	if _, err = f.Write(data); err != nil {
 		f.Close()
 		return err
@@ -91,12 +147,12 @@ func Write(home, path string, force bool, data []byte) error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	if err = Validate(home, path, force); err != nil {
+	if err = d.check(); err != nil {
 		return err
 	}
 	if force {
-		return os.Rename(name, path)
+		return unix.Renameat(dirFD, temp, dirFD, d.name)
 	}
-	// Link publishes without a check/rename overwrite race.
-	return os.Link(name, path)
+	// Link publishes without replacing a destination created since validation.
+	return unix.Linkat(dirFD, temp, dirFD, d.name, 0)
 }
