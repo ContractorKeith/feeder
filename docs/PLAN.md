@@ -1,6 +1,6 @@
 # feeder — build plan
 
-Status: M0 merged via PR #7 on 2026-11-02; parent acceptance and Linux/macOS CI passed after independent attack findings were fixed. M1 implementation is in its draft PR; parent acceptance and Linux/macOS CI remain required before integration. Execution authorized 2026-11-02.
+Status: M0 merged via PR #7 on 2026-11-02; parent acceptance and Linux/macOS CI passed after independent attack findings were fixed. M1 merged via PR #11 at main 3587e9f. M2 calendar digests are implemented awaiting parent review, acceptance rerun and Linux/macOS CI. Execution authorized 2026-11-02.
 
 The authoritative spec is [features/digest/SPEC.md](features/digest/SPEC.md). Interview history stays beside it; root CONTEXT.md contains only language.
 

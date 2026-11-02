@@ -27,6 +27,9 @@ smoke --home "$scratch/state" export --output "$scratch/feeds.opml"
 smoke --home "$scratch/copy" import "$scratch/feeds.opml" --json
 smoke --home "$scratch/state" feeds remove 1 --json
 smoke --home "$scratch/state" fetch --json
+smoke --home "$scratch/state" digest --json
+smoke --home "$scratch/state" digest --period weekly --output "$scratch/digest.md"
+test -s "$scratch/digest.md"
 smoke --home "$scratch/state" feeds purge 1 --dry-run --json
 smoke --home "$scratch/state" feeds purge 1 --force --json
 echo "accept: ok"

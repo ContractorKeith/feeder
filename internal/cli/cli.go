@@ -152,7 +152,7 @@ Set endpoint/model before enabling those settings. Overrides are never saved.`}
 	}}
 	root.AddCommand(initCmd, configCmd, versionCmd, completion)
 	cio := commandIO{ctx, d, resolve, overrides, emit}
-	root.AddCommand(feedCommands(cio), fetchCommand(cio, &asJSON))
+	root.AddCommand(feedCommands(cio), fetchCommand(cio, &asJSON), digestCommand(cio, &asJSON))
 	root.AddCommand(opmlCommands(cio)...)
 	// Mark parse/argument errors as usage errors; command bodies retain runtime errors.
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return app.Invalid(errors.New("invalid flags; see --help")) })

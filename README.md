@@ -2,7 +2,7 @@
 
 A local Go CLI for collecting RSS/Atom feeds and producing personal source-linked digests. Feed excerpts will be the default, with opt-in summaries through Ollama or an OpenAI-compatible endpoint.
 
-**Status:** M1 feed collection implemented; digests arrive in M2 and opt-in summaries in M3. No working digest release yet. MIT licensed; Linux and macOS, pure-Go SQLite.
+**Status:** M1 merged in PR #11; M2 calendar digests implemented awaiting parent review. Opt-in summaries arrive in M3. No v1 release yet. MIT licensed; Linux and macOS, pure-Go SQLite.
 
 ```sh
 go build -o feeder ./cmd/feeder
@@ -13,7 +13,7 @@ go build -o feeder ./cmd/feeder
 bash scripts/accept.sh
 ```
 
-Implemented commands: `init`, `config show/set`, `feeds add/list/tag/remove/purge`, `fetch`, `import`, `export`, `version`, `help`, and `completion bash|zsh|fish`. Each command supports `--help` with examples. Digest and model commands are not implemented yet.
+Implemented commands: `init`, `config show/set`, `feeds add/list/tag/remove/purge`, `fetch`, `digest`, `import`, `export`, `version`, `help`, and `completion bash|zsh|fish`. Each command supports `--help` with examples. Model summaries are not implemented yet.
 
 Collect feeds without downloading linked articles:
 
@@ -31,13 +31,23 @@ Collect feeds without downloading linked articles:
 
 Add/import register without fetching. The first successfully parsed fetch stores all entries as baseline, including after failed attempts; a successful empty feed also initializes baseline. Later arrivals are non-baseline. Edits preserve first-seen time and baseline; repeats do not duplicate items. Identity is per feed: GUID/Atom ID, otherwise resolved article URL, otherwise a hash of title and publication text. Removal retains history; re-add preserves the ID, baseline state, validators and items. Repeated add/import merges tags, and a supplied nonempty title updates the title. `feeds tag` replaces tags; omitting tags clears them.
 
-Digest is **not available until M2**. After the first fetch on 2026-11-02 in the saved timezone, the planned baseline preview is:
+Every digest refreshes active feeds before selecting by immutable first-seen time. Initial fetches establish baseline and are excluded by default. After the first fetch on 2026-11-02 in the saved timezone, preview baseline with:
 
 ```sh
 feeder digest --from 2026-11-02 --to 2026-11-03 --include-baseline
 ```
 
-Use today's date and tomorrow's exclusive end date when M2 is available. Including baseline will still respect that calendar window.
+Use today's date and tomorrow's exclusive end date. Including baseline still respects that calendar window.
+
+```sh
+feeder digest                         # previous local calendar day
+feeder digest --period weekly --tag tech --limit 30 --output weekly.md
+feeder digest --timezone UTC --feed 1 --json --output -
+```
+
+Weekly covers the previous Monday–Sunday, using calendar arithmetic through DST/year changes. Explicit dates are inclusive from/exclusive to and conflict with explicit --period. Feed IDs and tags are repeatable (OR within a type, AND between types); removed history remains eligible. Exact article URLs deduplicate after filtering and before the newest-first limit (default 20, max 200). All eligible contributors remain attached; missing links stay separate. New arrivals discovered today cannot enter yesterday, regardless of publisher dates.
+
+Markdown is the default. Entries are labeled excerpts, with absent/short feed content called out; linked full articles are never fetched or verified. Short means fewer than 200 Unicode characters; excerpts cap at 600 plus an ellipsis. Models are never called in M2; summarize=true fails validation before fetching (override with --summarize=false). Any failed refresh produces visible incomplete coverage and exit 3 while retaining stored output. Empty/no subscriptions succeeds with a hint. --output FILE writes atomically, refuses overwrite without --force, and protects state files/aliases; --output - writes stdout. See [the exact JSON schema](docs/json.md).
 
 Fetch allows explicitly supplied HTTP(S) URLs, including private/loopback hosts, rejects credentials and other schemes, and normalizes subscription scheme/host, default port, empty path and fragment. Article links resolve against the final feed URL and retain exact query parameters. No article is fetched. Feed HTML becomes plain Unicode text; scripts, styles, ANSI escapes and controls are removed. The default timeout is 30s (`feed_timeout`), with a 5 MiB decompressed body cap and at most five redirects. No cookies or login support. Conditional validators are sent only after a stored success and withheld across origins. A 304 preserves items and initialization. Invalid, oversized, truncated or failed responses preserve items, validators and baseline; attempt/error metadata is updated. Successful feeds commit independently; local storage/output failures remain fatal.
 
