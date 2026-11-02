@@ -51,6 +51,38 @@ func TestSummaryOptInAndCache(t *testing.T) {
 	}
 }
 
+func TestSummaryTitleAndURLChangesInvalidateCache(t *testing.T) {
+	c := newCollection(t)
+	calls := 0
+	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		fmt.Fprint(w, `{"message":{"content":"Summary."}}`)
+	}))
+	defer model.Close()
+	title, link := "Original", "https://example.org/original"
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `<rss version="2.0"><channel><title>Feed</title><item><guid>stable</guid><title>%s</title><link>%s</link><description>Unchanged body.</description></item></channel></rss>`, title, link)
+	}))
+	defer feed.Close()
+	success(t, c.call("feeds", "add", feed.URL))
+	args := []string{"digest", "--from", "2026-11-02", "--to", "2026-11-03", "--include-baseline", "--json", "--summarize", "--model", "fixture", "--endpoint", model.URL}
+	success(t, c.call(args...))
+	title = "Corrected title"
+	success(t, c.call(args...))
+	if calls != 2 {
+		t.Fatal("title edit reused stale cache", calls)
+	}
+	link = "https://example.org/corrected"
+	success(t, c.call(args...))
+	if calls != 3 {
+		t.Fatal("URL edit reused stale cache", calls)
+	}
+	success(t, c.call(args...))
+	if calls != 3 {
+		t.Fatal("unchanged item missed cache", calls)
+	}
+}
+
 func TestSummaryProtocolSelectionAndInvalidation(t *testing.T) {
 	for _, provider := range []string{"ollama", "openai"} {
 		t.Run(provider, func(t *testing.T) {

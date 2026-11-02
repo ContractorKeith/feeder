@@ -197,7 +197,7 @@ func (c Collection) GenerateDigest(o DigestOptions) (Digest, error) {
 			if content == "" {
 				continue
 			}
-			key := modelSettings.CacheKey(content)
+			key := modelSettings.CacheKey(byID[entry.ItemID].Hash)
 			text, cacheErr := storage.Summary(c.Context, db, entry.ItemID, key)
 			if cacheErr != nil {
 				return result, cacheErr

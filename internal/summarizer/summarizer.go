@@ -63,8 +63,8 @@ func Prepare(c config.Config, getenv func(string) string) (Settings, error) {
 	return s, nil
 }
 
-func (s Settings) CacheKey(content string) string {
-	b, _ := json.Marshal([]any{content, s.Provider, s.Endpoint, s.Model, PromptVersion, s.Input, s.Output, s.Timeout.String(), ResponseBytes})
+func (s Settings) CacheKey(contentHash string) string {
+	b, _ := json.Marshal([]any{contentHash, s.Provider, s.Endpoint, s.Model, PromptVersion, s.Input, s.Output, s.Timeout.String(), ResponseBytes})
 	hash := sha256.Sum256(b)
 	return hex.EncodeToString(hash[:])
 }
