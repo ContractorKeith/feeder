@@ -2,7 +2,7 @@
 
 A local Go CLI for collecting RSS/Atom feeds and producing personal source-linked digests. Feed excerpts are the default, with opt-in summaries through Ollama or an OpenAI-compatible endpoint.
 
-**Status:** M0–M4 merged through main 5886856 with Linux/macOS gates passed. M5 packaging/evaluation kit pending parent review. No v1 release yet. MIT licensed; Linux and macOS, pure-Go SQLite.
+**Status:** M0–M5 merged through main 6637a69. Parent acceptance, Linux/macOS CI, four-platform packaging and native package smokes passed. Real-model evaluation and manual summary review remain pending before release. No v1 release yet. MIT licensed; Linux and macOS, pure-Go SQLite.
 
 ```sh
 go build -o feeder ./cmd/feeder

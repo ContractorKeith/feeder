@@ -1,7 +1,9 @@
 # Packaging and release checklist
 
-M0–M4 are merged through 58868564071eeb68f6614f5c52f00e2d8095c330,
-with Linux/macOS gates passed. M5 packaging/evaluation is pending parent review.
+M0–M5 are merged through 6637a69c2ddda1935a14a5122f41406f6000d115.
+Parent review, acceptance, four-platform packaging and native Linux/macOS package
+smokes passed. A disposable real-feed excerpt smoke also passed. Real-model
+evaluation, manual summary review and combined live feed/model smoke remain pending.
 No release tag or tap publication is authorized by implementation of this kit.
 
 ## Build and inspect a candidate
