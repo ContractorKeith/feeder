@@ -1,6 +1,6 @@
 # feeder — build plan
 
-Status: M0 merged via PR #7 on 2026-11-02; parent acceptance and Linux/macOS CI passed after independent attack findings were fixed. M1 merged via PR #11 at main 3587e9f. M2 calendar digests merged via PR #13 at main 8f12aad. M3 bounded cached summaries are implemented awaiting parent review, acceptance rerun and Linux/macOS CI. Execution authorized 2026-11-02.
+Status: M0 merged via PR #7 on 2026-11-02; parent acceptance and Linux/macOS CI passed after independent attack findings were fixed. M1 merged via PR #11 at main 3587e9f. M2 calendar digests merged via PR #13 at main 8f12aad. M3 bounded cached summaries merged via PR #14 at main bb89fcc with Linux/macOS CI green. M4 operational reliability and scheduling documentation are implemented awaiting parent review, acceptance rerun and Linux/macOS CI. Execution authorized 2026-11-02.
 
 The authoritative spec is [features/digest/SPEC.md](features/digest/SPEC.md). Interview history stays beside it; root CONTEXT.md contains only language.
 

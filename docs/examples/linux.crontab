@@ -1,0 +1,6 @@
+# User crontab. Replace /home/reader everywhere before explicitly installing.
+# Scheduler times use the host timezone; digest windows explicitly use UTC.
+# Hourly at :00; daily at 07:10; weekly Monday at 07:20.
+0 * * * * /bin/sh /home/reader/feeder/run-feeder.sh /home/reader/bin/feeder /home/reader/feeder/state UTC /home/reader/feeder/digests fetch 10s >>/home/reader/feeder/logs/fetch.jsonl 2>>/home/reader/feeder/logs/fetch.err
+10 7 * * * /bin/sh /home/reader/feeder/run-feeder.sh /home/reader/bin/feeder /home/reader/feeder/state UTC /home/reader/feeder/digests daily 10s >>/home/reader/feeder/logs/daily.out 2>>/home/reader/feeder/logs/daily.err
+20 7 * * 1 /bin/sh /home/reader/feeder/run-feeder.sh /home/reader/bin/feeder /home/reader/feeder/state UTC /home/reader/feeder/digests weekly 10s >>/home/reader/feeder/logs/weekly.out 2>>/home/reader/feeder/logs/weekly.err

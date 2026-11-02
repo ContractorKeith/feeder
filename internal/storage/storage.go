@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -12,7 +13,8 @@ import (
 
 	"github.com/ContractorKeith/feeder/internal/state"
 	"golang.org/x/sys/unix"
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 var ErrBusy = errors.New("writer busy; retry or increase --lock-timeout")
@@ -92,7 +94,7 @@ func Open(ctx context.Context, home string, now time.Time) (*sql.DB, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	fail := func(err error) (*sql.DB, error) { db.Close(); return nil, err }
+	fail := func(err error) (*sql.DB, error) { db.Close(); return nil, databaseError(err) }
 	if _, err = db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
 		return fail(err)
 	}
@@ -182,7 +184,19 @@ func OpenRead(ctx context.Context, home string) (*sql.DB, error) {
 	}
 	if err != nil {
 		db.Close()
-		return nil, err
+		return nil, databaseError(err)
 	}
 	return db, nil
+}
+
+// Keep corruption recovery explicit; SQLite source data is never disposable.
+func databaseError(err error) error {
+	var dbErr *sqlite.Error
+	if errors.As(err, &dbErr) {
+		code := dbErr.Code() & 0xff
+		if code == sqlite3.SQLITE_CORRUPT || code == sqlite3.SQLITE_NOTADB {
+			return fmt.Errorf("database unreadable; keep feeder.db and its sidecars for recovery; restore a verified backup to a separate --home: %w", err)
+		}
+	}
+	return err
 }

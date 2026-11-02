@@ -37,7 +37,27 @@ func Execute(ctx context.Context, args []string, out, stderr io.Writer, deps app
 	var home, lockTimeout, timezone string
 	var asJSON bool
 	root := &cobra.Command{Use: "feeder", Short: "Collect feeds into local, source-linked personal digests", Example: "  feeder init --timezone America/New_York\n  feeder config show --json", Version: version, SilenceErrors: true, SilenceUsage: true}
+	root.Long = `Collect feeds into local, source-linked personal digests.
+
+Settings and environment: feeder help config. External scheduling examples:
+docs/scheduling.md (cron and launchd; no internal daemon).
+
+Exit codes: 0 success (including empty), 1 fatal local/runtime/output failure,
+2 usage/config validation, 3 degraded/partial results, 4 writer busy,
+130 interrupted. Output failure outranks degraded status.
+Primary data goes to stdout or --output; human diagnostics go to stderr.`
 	root.SetOut(out)
+	// Cobra's help callback cannot return errors. Retain write failures so
+	// both --help and the help command report a fatal output failure.
+	var helpErr error
+	defaultHelp := root.HelpFunc()
+	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		writer := &helpWriter{Writer: cmd.OutOrStdout()}
+		cmd.SetOut(writer)
+		defer cmd.SetOut(writer.Writer)
+		defaultHelp(cmd, args)
+		helpErr = writer.err
+	})
 	root.SetErr(stderr)
 	root.SetArgs(args)
 	root.CompletionOptions.DisableDefaultCmd = true
@@ -176,6 +196,9 @@ Set endpoint/model before enabling those settings. Overrides are never saved.`}
 		return app.Invalid(errors.New("choose config show or config set"))
 	}
 	err := root.ExecuteContext(ctx)
+	if helpErr != nil {
+		err = helpErr
+	}
 	if err == nil {
 		return 0
 	}
@@ -203,6 +226,22 @@ Set endpoint/model before enabling those settings. Overrides are never saved.`}
 		fmt.Fprintln(stderr, message)
 	}
 	return code
+}
+
+type helpWriter struct {
+	io.Writer
+	err error
+}
+
+func (w *helpWriter) Write(b []byte) (int, error) {
+	n, err := w.Writer.Write(b)
+	if err == nil && n != len(b) {
+		err = io.ErrShortWrite
+	}
+	if w.err == nil {
+		w.err = err
+	}
+	return n, err
 }
 
 // jsonIntent recovers output intent when Cobra stops at an earlier bad token.
