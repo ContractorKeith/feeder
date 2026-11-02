@@ -1,6 +1,6 @@
 # feeder — build plan
 
-Status: specification approved through the grill; execution authorized 2026-11-02.
+Status: M0 merged via PR #7 on 2026-11-02; parent acceptance and Linux/macOS CI passed after independent attack findings were fixed. M1 is next. Execution authorized 2026-11-02.
 
 The authoritative spec is [features/digest/SPEC.md](features/digest/SPEC.md). Interview history stays beside it; root CONTEXT.md contains only language.
 
