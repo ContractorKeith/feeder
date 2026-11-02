@@ -21,7 +21,7 @@ func digestCommand(c commandIO, asJSON *bool) *cobra.Command {
 	var limit int
 	var provider, model, endpoint string
 	var inputCap, outputCap int
-	cmd := &cobra.Command{Use: "digest", Short: "Refresh active feeds and generate a calendar digest from feed excerpts", Example: "  feeder digest --period weekly --tag tech --output weekly.md\n  feeder digest --from 2026-11-02 --to 2026-11-03 --include-baseline", Args: usageArgs(cobra.NoArgs)}
+	cmd := &cobra.Command{Use: "digest", Short: "Refresh active feeds and generate a calendar digest with excerpts or opt-in summaries", Example: "  feeder digest --period weekly --tag tech --output weekly.md\n  feeder digest --from 2026-11-02 --to 2026-11-03 --include-baseline", Args: usageArgs(cobra.NoArgs)}
 	f := cmd.Flags()
 	f.StringVar(&period, "period", "daily", "previous calendar daily or Monday-Sunday weekly window")
 	f.StringVar(&from, "from", "", "inclusive local date YYYY-MM-DD (requires --to)")
@@ -33,12 +33,12 @@ func digestCommand(c commandIO, asJSON *bool) *cobra.Command {
 	f.BoolVar(&baseline, "include-baseline", false, "include initial fetch items within the selected window")
 	f.StringVar(&path, "output", "-", "output file or - for stdout (atomic, no overwrite)")
 	f.BoolVar(&force, "force", false, "overwrite an existing regular output file")
-	f.BoolVar(&summarize, "summarize", false, "reserved for M3; only false is supported")
-	f.StringVar(&provider, "provider", "", "summary provider (reserved for M3)")
-	f.StringVar(&model, "model", "", "summary model (reserved for M3)")
-	f.StringVar(&endpoint, "endpoint", "", "summary endpoint (reserved for M3)")
-	f.IntVar(&inputCap, "max-input-chars", 12000, "summary input cap (reserved for M3)")
-	f.IntVar(&outputCap, "max-output-tokens", 256, "summary output cap (reserved for M3)")
+	f.BoolVar(&summarize, "summarize", false, "opt in to model summaries (false overrides saved true)")
+	f.StringVar(&provider, "provider", "", "summary provider: ollama or openai")
+	f.StringVar(&model, "model", "", "summary model")
+	f.StringVar(&endpoint, "endpoint", "", "summary endpoint")
+	f.IntVar(&inputCap, "max-input-chars", 12000, "summary input cap in Unicode code points")
+	f.IntVar(&outputCap, "max-output-tokens", 256, "summary output token cap")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		invalid := func(message string) error { return app.Invalid(errors.New(message)) }
 		if f.Changed("from") != f.Changed("to") || ((f.Changed("from") || f.Changed("to")) && f.Changed("period")) {
@@ -61,9 +61,6 @@ func digestCommand(c commandIO, asJSON *bool) *cobra.Command {
 		settings, err := app.Read(service.Home, c.d, overrides)
 		if err != nil {
 			return err
-		}
-		if settings["summarize"] == true {
-			return invalid("summaries are not implemented until M3; use --summarize=false")
 		}
 		window, err := app.CalendarWindow(c.d.Now(), settings["timezone"].(string), period, from, to)
 		if err != nil {
@@ -100,6 +97,13 @@ func digestCommand(c commandIO, asJSON *bool) *cobra.Command {
 				}
 			}
 		}
+		for _, entry := range digest.Entries {
+			if entry.TextKind == "fallback" {
+				status = "degraded"
+				warnings = append(warnings, "Summary unavailable; labeled feed excerpt retained.")
+				problems = append(problems, problem{Code: "summary", Message: "summary request failed; using feed excerpt", ItemID: entry.ItemID})
+			}
+		}
 		var b bytes.Buffer
 		if *asJSON {
 			err = json.NewEncoder(&b).Encode(envelope{1, status, digest, warnings, problems})
@@ -124,7 +128,7 @@ func digestCommand(c commandIO, asJSON *bool) *cobra.Command {
 				}
 			}
 			for _, p := range problems {
-				if _, err = fmt.Fprintf(cmd.ErrOrStderr(), "feed %d: %s\n", p.FeedID, p.Message); err != nil {
+				if _, err = fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s\n", problemLabel(p), p.Message); err != nil {
 					return err
 				}
 			}
@@ -140,6 +144,13 @@ func digestCommand(c commandIO, asJSON *bool) *cobra.Command {
 		return nil
 	}
 	return cmd
+}
+
+func problemLabel(p problem) string {
+	if p.ItemID != 0 {
+		return fmt.Sprintf("item %d", p.ItemID)
+	}
+	return fmt.Sprintf("feed %d", p.FeedID)
 }
 
 // Escape all Markdown syntax in feed text, including raw HTML and autolinks.
@@ -185,7 +196,14 @@ func renderDigest(d app.Digest) string {
 		} else {
 			b.WriteString(markdownLink(title, e.URL))
 		}
-		fmt.Fprintf(&b, "\n\nExcerpt — %s (feed-provided content).\n\n", e.LimitedContent)
+		label := "Excerpt"
+		if e.TextKind == "summary" {
+			label = "Summary"
+		}
+		if e.TextKind == "fallback" {
+			label = "Excerpt fallback — summary unavailable"
+		}
+		fmt.Fprintf(&b, "\n\n%s — %s (feed-provided content).\n\n", label, e.LimitedContent)
 		if e.Text == "" {
 			b.WriteString("No feed content available.\n\n")
 		} else {

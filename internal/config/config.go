@@ -52,7 +52,15 @@ func (c Config) Set(key, value string) error {
 	case "endpoint":
 		if value != "" {
 			u, err := url.Parse(value)
-			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.Opaque != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+				return invalid()
+			}
+			if port := u.Port(); port != "" {
+				n, err := strconv.ParseUint(port, 10, 16)
+				if err != nil || n == 0 {
+					return invalid()
+				}
+			} else if strings.HasSuffix(u.Host, ":") {
 				return invalid()
 			}
 		}

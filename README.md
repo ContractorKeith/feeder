@@ -1,8 +1,8 @@
 # feeder
 
-A local Go CLI for collecting RSS/Atom feeds and producing personal source-linked digests. Feed excerpts will be the default, with opt-in summaries through Ollama or an OpenAI-compatible endpoint.
+A local Go CLI for collecting RSS/Atom feeds and producing personal source-linked digests. Feed excerpts are the default, with opt-in summaries through Ollama or an OpenAI-compatible endpoint.
 
-**Status:** M1 merged in PR #11; M2 calendar digests implemented awaiting parent review. Opt-in summaries arrive in M3. No v1 release yet. MIT licensed; Linux and macOS, pure-Go SQLite.
+**Status:** M2 merged in PR #13 (main 8f12aad); M3 opt-in summaries implemented awaiting parent review. No v1 release yet. MIT licensed; Linux and macOS, pure-Go SQLite.
 
 ```sh
 go build -o feeder ./cmd/feeder
@@ -13,7 +13,7 @@ go build -o feeder ./cmd/feeder
 bash scripts/accept.sh
 ```
 
-Implemented commands: `init`, `config show/set`, `feeds add/list/tag/remove/purge`, `fetch`, `digest`, `import`, `export`, `version`, `help`, and `completion bash|zsh|fish`. Each command supports `--help` with examples. Model summaries are not implemented yet.
+Implemented commands: `init`, `config show/set`, `feeds add/list/tag/remove/purge`, `fetch`, `digest`, `import`, `export`, `version`, `help`, and `completion bash|zsh|fish`. Each command supports `--help` with examples.
 
 Collect feeds without downloading linked articles:
 
@@ -47,7 +47,7 @@ feeder digest --timezone UTC --feed 1 --json --output -
 
 Weekly covers the previous Monday–Sunday, using calendar arithmetic through DST/year changes. Explicit dates are inclusive from/exclusive to and conflict with explicit --period. Feed IDs and tags are repeatable (OR within a type, AND between types); removed history remains eligible. Exact article URLs deduplicate after filtering and before the newest-first limit (default 20, max 200). All eligible contributors remain attached; missing links stay separate. New arrivals discovered today cannot enter yesterday, regardless of publisher dates.
 
-Markdown is the default. Entries are labeled excerpts, with absent/short feed content called out; linked full articles are never fetched or verified. Short means fewer than 200 Unicode characters; excerpts cap at 600 plus an ellipsis. Models are never called in M2; summarize=true fails validation before fetching (override with --summarize=false). Any failed refresh produces visible incomplete coverage and exit 3 while retaining stored output. Empty/no subscriptions succeeds with a hint. --output FILE writes atomically, refuses overwrite without --force, and protects state files/aliases; --output - writes stdout. See [the exact JSON schema](docs/json.md).
+Markdown is the default. Entries are labeled excerpts, with absent/short feed content called out; linked full articles are never fetched or verified. Short means fewer than 200 Unicode characters; excerpts cap at 600 plus an ellipsis. Models are called only when summaries are enabled (override saved true with `--summarize=false`). Any failed refresh produces visible incomplete coverage and exit 3 while retaining stored output. Empty/no subscriptions succeeds with a hint. --output FILE writes atomically, refuses overwrite without --force, and protects state files/aliases; --output - writes stdout. See [the exact JSON schema](docs/json.md).
 
 Fetch allows explicitly supplied HTTP(S) URLs, including private/loopback hosts, rejects credentials and other schemes, and normalizes subscription scheme/host, default port, empty path and fragment. Article links resolve against the final feed URL and retain exact query parameters. No article is fetched. Feed HTML becomes plain Unicode text; scripts, styles, ANSI escapes and controls are removed. The default timeout is 30s (`feed_timeout`), with a 5 MiB decompressed body cap and at most five redirects. No cookies or login support. Conditional validators are sent only after a stored success and withheld across origins. A 304 preserves items and initialization. Invalid, oversized, truncated or failed responses preserve items, validators and baseline; attempt/error metadata is updated. Successful feeds commit independently; local storage/output failures remain fatal.
 
@@ -57,7 +57,7 @@ State is `config.json`, `feeder.db` and `feeder.lock` under `--home`, then `FEED
 
 `init` saves an IANA timezone, deriving it from the machine when possible; it warns when falling back to UTC. Repeating init preserves saved settings, including the timezone. Explicit initialization timezone uses `--timezone` over `FEEDER_TIMEZONE`. Embedded timezone data makes IANA zones available independently of system tzdata.
 
-Settings precedence is explicit command flags > supported environment > saved config > defaults. Overrides never change saved settings. `config set` validates both saved and effective settings and atomically replaces the config while holding a bounded cross-process advisory writer lock. The default wait is 10s; `--lock-timeout` overrides it. Ctrl-C cancels waits. SQLite migrations are transactional; corrupt or newer databases are preserved and produce an error. State targets (including SQLite journal/WAL/shared-memory sidecars) must be regular, singly linked files. Symlinks, hardlinks and special files are rejected before mutations; app-owned files use descriptor-relative no-follow opens. The selected home itself must be a directory rather than a symlink. Config files larger than 1 MiB are rejected without replacement. Database schema version 2 adds subscriptions, tags and items, migrating M0 version 1 transactionally. The migration ledger, expected table definitions, SQLite integrity and foreign keys are checked on open; inconsistent schemas are rejected without resetting data. JSON envelope schema_version remains 1.
+Settings precedence is explicit command flags > supported environment > saved config > defaults. Overrides never change saved settings. `config set` validates both saved and effective settings and atomically replaces the config while holding a bounded cross-process advisory writer lock. The default wait is 10s; `--lock-timeout` overrides it. Ctrl-C cancels waits. SQLite migrations are transactional; corrupt or newer databases are preserved and produce an error. State targets (including SQLite journal/WAL/shared-memory sidecars) must be regular, singly linked files. Symlinks, hardlinks and special files are rejected before mutations; app-owned files use descriptor-relative no-follow opens. The selected home itself must be a directory rather than a symlink. Config files larger than 1 MiB are rejected without replacement. Database schema version 3 adds the summary cache, migrating versions 1/2 transactionally while preserving subscriptions and items. The migration ledger, expected table definitions, SQLite integrity and foreign keys are checked on open; inconsistent schemas are rejected without resetting data. JSON envelope schema_version remains 1.
 
 | Saved setting | Environment | Default / bounds |
 |---|---|---|
@@ -74,7 +74,25 @@ Settings precedence is explicit command flags > supported environment > saved co
 | model_timeout | FEEDER_MODEL_TIMEOUT | 60s; positive Go duration |
 | lock_timeout | FEEDER_LOCK_TIMEOUT | 10s; positive Go duration |
 
-Set the endpoint before selecting `openai` and set the model before enabling `summarize`. OpenAI cannot inherit Ollama's default endpoint. Model settings are validated and saved for future milestones; feed collection never makes model requests. `FEEDER_API_KEY` and key-file contents are never read or printed by foundation commands. There is no inline API key setting or flag.
+Set the endpoint before selecting `openai` and set the model before enabling `summarize`. OpenAI cannot inherit Ollama's default endpoint. Summary settings are validated before digest refresh; feed collection never makes model requests. `FEEDER_API_KEY` and key-file contents are never read or printed by foundation commands. There is no inline API key setting or flag.
+
+Opt-in summaries use standard HTTP without provider SDKs. Configure a model, then enable for one digest:
+
+```sh
+feeder config set model llama3.2
+feeder digest --summarize --provider ollama
+# OpenAI-compatible base URL must be explicit; supply the key via environment
+# or config set api_key_file /path/to/private-key-file.
+feeder digest --summarize --provider openai --model your-model --endpoint https://api.example.org/v1
+```
+
+The supported subset is nonstreaming Ollama `POST /api/chat` with `options.num_predict`, or OpenAI-compatible base URL plus `/chat/completions` with `max_tokens`. Both send system/user messages, `model`, and `stream:false`. This is not a compatibility claim for every vendor. OpenAI requires `FEEDER_API_KEY` (takes precedence) or a readable regular key file, trimmed and at most 8192 bytes; Ollama requires no key. There are no key flags or saved plaintext keys. Redirects are rejected for model requests, so credentials cannot cross origins. Raw provider diagnostics are never printed.
+
+Selection, filtering, exact-URL deduplication and limit happen before model calls. Each nonempty selected representative supplies its full plain feed content, capped at `max_input_chars` Unicode code points (default 12000), rather than its 600-character display excerpt. The user message JSON-quotes this untrusted data; the system prompt requests source-only factual prose, ignores embedded instructions, and supplies no tools. The program attaches stored source links. Empty content skips the request, retaining an absent-content excerpt label. Generated text is untrusted and Markdown-escaped.
+
+Default output cap is 256 tokens and per-request timeout is 60s (`model_timeout`); response reads cap at 1 MiB, including decompressed data. No automatic retries or alternate providers. Maximum requests equal the selected entry limit. Successful summaries alone are cached durably by item/content, provider, normalized endpoint, model, prompt version and effective caps (including timeout/response limit). Edits and setting changes invalidate reuse; purge cascades to cached records. Failures, timeouts, empty/malformed/oversized responses retain labeled excerpt fallbacks (`text_kind: fallback`), degraded JSON/Markdown and exit 3. Cancellation exits 130; fatal output failures take precedence over degraded status.
+
+Fixed evaluation inputs are in `internal/summarizer/testdata/`: normal, teaser, empty and instruction-bearing text. These are deterministic protocol/reliability fixtures, not real-model quality evidence. Manual release review must record real model/settings, input/output, unsupported claims and limited-content behavior; no live-model evaluation has been performed for M3.
 
 `--json` on state/config commands and `version` emits one envelope on stdout:
 
@@ -82,7 +100,7 @@ Set the endpoint before selecting `openai` and set the model before enabling `su
 {"schema_version":1,"status":"ok","data":{},"warnings":[],"errors":[]}
 ```
 
-For `init`, data is `{ "home": "...", "config": { ...effective settings... } }`; for config show/set it is the effective settings object; for `version` it is a string. Settings use JSON strings, booleans and integers; durations are normalized Go duration strings. Errors use status `error`, data `null`, and errors `[{"code":"usage|runtime|busy|interrupted","message":"..."}]`. JSON warnings stay in the envelope; human diagnostics go to stderr. Error output honors `--json` on either side of an invalid command or flag. Tokens consumed as flag values and tokens after `--` do not select JSON mode. Help, completion scripts and `--version` retain their native text formats. Exit codes: 0 success, 1 local/runtime or output failure, 2 usage/config validation, 4 writer busy, 130 interrupted. Code 3 and status `degraded` report partial feed results, including all feeds failing.
+For `init`, data is `{ "home": "...", "config": { ...effective settings... } }`; for config show/set it is the effective settings object; for `version` it is a string. Settings use JSON strings, booleans and integers; durations are normalized Go duration strings. Errors use status `error`, data `null`, and errors `[{"code":"usage|runtime|busy|interrupted","message":"..."}]`. JSON warnings stay in the envelope; human diagnostics go to stderr. Error output honors `--json` on either side of an invalid command or flag. Tokens consumed as flag values and tokens after `--` do not select JSON mode. Help, completion scripts and `--version` retain their native text formats. Exit codes: 0 success, 1 local/runtime or output failure, 2 usage/config validation, 4 writer busy, 130 interrupted. Code 3 and status `degraded` report partial feed results or summary fallbacks, including all feeds failing.
 
 Tests use temporary state, injected clocks/HTTP clients/environment, fixture HTTP servers, and compiled subprocesses for contention and signals. `scripts/accept.sh` runs formatting, vet, race tests, a CGO-disabled build and isolated CLI smoke checks. CI runs that same gate on Linux and macOS. `golang.org/x/sys/unix` supplies descriptor-based OS advisory locks on Linux/macOS; the same validated descriptor is held through lock wait and release. Cobra owns parsing/help/completion and modernc SQLite avoids a CGO runtime dependency. M1 adds gofeed for real-world RSS/Atom parsing (and its parser dependencies), plus x/net/html for safe HTML-to-text extraction; both preserve the pure-Go build.
 

@@ -36,8 +36,11 @@ func validateSchema(ctx context.Context, q queryer, version int) error {
 		return errors.New("database integrity check failed")
 	}
 	ddls := []string{migrationDDL}
-	if version == 2 {
+	if version >= 2 {
 		ddls = append(ddls, domainSchema...)
+	}
+	if version >= 3 {
+		ddls = append(ddls, summaryDDL)
 	}
 	for _, ddl := range ddls {
 		name := strings.Fields(ddl)[2]

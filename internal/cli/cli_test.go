@@ -118,7 +118,7 @@ func TestInitReopenPermissionsAndMigration(t *testing.T) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if count != 2 || version != 2 || applied != "2026-11-02T12:00:00Z" {
+	if count != 3 || version != 3 || applied != "2026-11-02T12:00:00Z" {
 		t.Fatalf("migration changed: %d %d %s", count, version, applied)
 	}
 }

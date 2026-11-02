@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/ContractorKeith/feeder/internal/storage"
+	"github.com/ContractorKeith/feeder/internal/summarizer"
 )
 
 // Window is a half-open interval of instants derived from local calendar dates.
@@ -113,8 +114,9 @@ func (c Collection) GenerateDigest(o DigestOptions) (Digest, error) {
 	if err != nil {
 		return result, err
 	}
-	if settings["summarize"] == true {
-		return result, Invalid(errors.New("summaries are not implemented until M3; use --summarize=false"))
+	modelSettings, err := summarizer.Prepare(settings, c.Dependencies.Getenv)
+	if err != nil {
+		return result, Invalid(err)
 	}
 	loc, zoneErr := time.LoadLocation(o.Window.Timezone)
 	if zoneErr != nil {
@@ -180,6 +182,41 @@ func (c Collection) GenerateDigest(o DigestOptions) (Digest, error) {
 	result.Entries, err = SelectDigest(items, feeds, o)
 	if err != nil {
 		return result, err
+	}
+	if settings["summarize"] == true {
+		byID := map[int64]storage.Item{}
+		for _, item := range items {
+			byID[item.ID] = item
+		}
+		for i := range result.Entries {
+			if err = c.Context.Err(); err != nil {
+				return result, err
+			}
+			entry := &result.Entries[i]
+			content := byID[entry.ItemID].Content
+			if content == "" {
+				continue
+			}
+			key := modelSettings.CacheKey(byID[entry.ItemID].Hash)
+			text, cacheErr := storage.Summary(c.Context, db, entry.ItemID, key)
+			if cacheErr != nil {
+				return result, cacheErr
+			}
+			if text == "" {
+				text, err = modelSettings.Summarize(c.Context, c.Dependencies.HTTP, content)
+				if c.Context.Err() != nil {
+					return result, c.Context.Err()
+				}
+				if err != nil {
+					entry.TextKind = "fallback"
+					continue
+				}
+				if err = storage.SaveSummary(c.Context, db, entry.ItemID, key, text); err != nil {
+					return result, err
+				}
+			}
+			entry.Text, entry.TextKind = text, "summary"
+		}
 	}
 	result.GeneratedAt = c.Dependencies.Now().UTC()
 	if len(result.Entries) == 0 {

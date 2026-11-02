@@ -14,13 +14,13 @@ The envelope has exactly these fields:
 | schema_version | integer | Always 1 |
 | status | string | `ok`, `degraded`, or `error` |
 | data | command-specific value or null | Digest object below; null on fatal/usage error |
-| warnings | string array | Coverage warnings for degraded digests |
-| errors | object array | `code`, `message` strings; optional numeric `feed_id` |
+| warnings | string array | Coverage and summary fallback warnings for degraded digests |
+| errors | object array | `code`, `message` strings; optional numeric `feed_id` or `item_id` |
 
 Exit codes: 0 successful (including empty), 1 fatal local/output error,
-2 usage/config validation, 3 degraded feed coverage (including every active feed
+2 usage/config validation, 3 degraded feed coverage or summary fallback (including every active feed
 failing), 4 writer busy, 130 interrupted. Fatal output errors outrank exit 3.
-Error codes are `usage`, `runtime`, `busy`, `interrupted`, or `feed_fetch`.
+Error codes are `usage`, `runtime`, `busy`, `interrupted`, `feed_fetch`, or `summary`. Summary errors carry numeric `item_id`; messages are generic and never contain raw provider diagnostics.
 
 ## Digest data
 
@@ -46,8 +46,8 @@ Each entry contains exactly:
 | title | string | Representative plain feed title (may be empty) |
 | url | string | Exact resolved article URL; empty when unavailable |
 | first_seen | string | Representative immutable RFC3339Nano UTC instant |
-| text | string | Feed excerpt, empty for absent content |
-| text_kind | string | `excerpt` in M2; `summary`/`fallback` reserved for M3 |
+| text | string | Feed excerpt or model summary, empty for absent content |
+| text_kind | string | `excerpt`, `summary`, or `fallback` |
 | limited_content | string | `absent`, `short`, or `feed_content` |
 | sources | object array | All eligible contributing stored items, before limit |
 
@@ -55,9 +55,14 @@ Each entry contains exactly:
 and `feed_content` for at least 200, measured on stored plain feed content before
 excerpt truncation. Excerpts use at most the first 600 Unicode code points,
 with an added ellipsis when truncated. Longer feed content is never proof of a
-complete article. No linked article is downloaded and no model is called in M2.
-`--summarize=true` or effective saved/environment summarize=true is a validation
-error before refresh; `--summarize=false` overrides it.
+complete article. No linked article is downloaded. Models are opt-in via effective summarize=true;
+`--summarize=false` overrides saved/environment true. A successful summary uses
+`text_kind: summary`; a failed request retains the excerpt as `fallback` with
+status `degraded`, a `summary` error containing `item_id`, warning and exit 3.
+Empty feed content skips the model and remains `excerpt`/`absent`, without
+summary degradation. Limited-content labels always describe the original feed
+content, even after summarization. Links/sources remain program-attached stored
+values. Configuration and key-file validation fail before refresh or state changes.
 
 Each source has integer `feed_id`, integer `item_id`, string `title` (subscription
 display title), string `feed_url`, and string `article_url` (empty if absent).
@@ -84,4 +89,4 @@ Example (one absent-content entry):
 ```
 
 For other command data shapes, see [README](../README.md). State database schema
-version 2 is independent of this JSON envelope version.
+version 3 is independent of this JSON envelope version.
