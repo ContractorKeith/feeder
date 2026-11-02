@@ -105,10 +105,18 @@ func Open(ctx context.Context, home string, now time.Time) (*sql.DB, error) {
 	if err = tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 1 {
+	if version > 2 {
 		return fail(errors.New("database schema is newer than this feeder; upgrade feeder"))
 	}
 	if version == 0 {
+		var existing int
+		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").Scan(&existing); err != nil {
+			return fail(err)
+		}
+		if existing != 0 {
+			return fail(errors.New("inconsistent unversioned database schema"))
+		}
+
 		_, err = tx.ExecContext(ctx, `CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
 INSERT INTO schema_migrations(version, applied_at) VALUES (1, ?);
 PRAGMA user_version = 1;`, now.UTC().Format(time.RFC3339Nano))
@@ -116,8 +124,57 @@ PRAGMA user_version = 1;`, now.UTC().Format(time.RFC3339Nano))
 			return fail(err)
 		}
 	}
+	if err = validateSchema(ctx, tx, versionAfterInit(version)); err != nil {
+		return fail(err)
+	}
+	if version < 2 {
+		for _, ddl := range domainSchema {
+			if _, err = tx.ExecContext(ctx, ddl); err != nil {
+				return fail(err)
+			}
+		}
+		if _, err = tx.ExecContext(ctx, "INSERT INTO schema_migrations VALUES (2, ?); PRAGMA user_version=2", now.UTC().Format(time.RFC3339Nano)); err != nil {
+			return fail(err)
+		}
+	}
+	if err = validateSchema(ctx, tx, 2); err != nil {
+		return fail(err)
+	}
 	if err = tx.Commit(); err != nil {
 		return fail(err)
+	}
+	return db, nil
+}
+
+// OpenRead checks committed schema without taking the writer lock or migrating.
+func OpenRead(ctx context.Context, home string) (*sql.DB, error) {
+	dir, err := state.Open(home, false)
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+	f, err := dir.OpenFile("feeder.db", os.O_RDONLY)
+	if err != nil {
+		return nil, err
+	}
+	f.Close()
+	u := url.URL{Scheme: "file", Path: filepath.Join(home, "feeder.db"), RawQuery: "mode=ro"}
+	db, err := sql.Open("sqlite", u.String())
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	var version int
+	if err = db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err == nil {
+		if version != 1 && version != 2 {
+			err = errors.New("unsupported database schema")
+		} else {
+			err = validateSchema(ctx, db, version)
+		}
+	}
+	if err != nil {
+		db.Close()
+		return nil, err
 	}
 	return db, nil
 }

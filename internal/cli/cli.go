@@ -20,6 +20,7 @@ import (
 type problem struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	FeedID  int64  `json:"feed_id,omitempty"`
 }
 type envelope struct {
 	SchemaVersion int       `json:"schema_version"`
@@ -150,6 +151,9 @@ Set endpoint/model before enabling those settings. Overrides are never saved.`}
 		}
 	}}
 	root.AddCommand(initCmd, configCmd, versionCmd, completion)
+	cio := commandIO{ctx, d, resolve, overrides, emit}
+	root.AddCommand(feedCommands(cio), fetchCommand(cio, &asJSON))
+	root.AddCommand(opmlCommands(cio)...)
 	// Mark parse/argument errors as usage errors; command bodies retain runtime errors.
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return app.Invalid(errors.New("invalid flags; see --help")) })
 	for _, c := range []*cobra.Command{initCmd, show, set, versionCmd, completion} {
@@ -174,6 +178,9 @@ Set endpoint/model before enabling those settings. Overrides are never saved.`}
 	if err == nil {
 		return 0
 	}
+	if _, ok := err.(degraded); ok {
+		return 3
+	}
 	code, kind, message := 1, "runtime", "local operation failed: "+err.Error()
 	var invalid *app.ValidationError
 	switch {
@@ -187,7 +194,7 @@ Set endpoint/model before enabling those settings. Overrides are never saved.`}
 		code, kind, message = 2, "usage", "unknown command; see --help"
 	}
 	if jsonIntent(root, args) {
-		if e := json.NewEncoder(out).Encode(envelope{1, "error", nil, []string{}, []problem{{kind, message}}}); e != nil {
+		if e := json.NewEncoder(out).Encode(envelope{1, "error", nil, []string{}, []problem{{Code: kind, Message: message}}}); e != nil {
 			fmt.Fprintln(stderr, "failed to write JSON output")
 			return 1
 		}
