@@ -2,6 +2,8 @@
 package config
 
 import (
+	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +16,8 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata"
+
+	"github.com/ContractorKeith/feeder/internal/state"
 )
 
 type Config map[string]any
@@ -78,7 +82,15 @@ func (c Config) Set(key, value string) error {
 
 func Load(home string) (Config, error) {
 	c := Defaults()
-	f, err := os.Open(filepath.Join(home, "config.json"))
+	dir, err := state.Open(home, false)
+	if errors.Is(err, os.ErrNotExist) {
+		return c, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+	f, err := dir.OpenFile("config.json", os.O_RDONLY)
 	if errors.Is(err, os.ErrNotExist) {
 		return c, nil
 	}
@@ -86,8 +98,16 @@ func Load(home string) (Config, error) {
 		return nil, err
 	}
 	defer f.Close()
+	const maxConfigBytes = 1 << 20
+	b, err := io.ReadAll(io.LimitReader(f, maxConfigBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxConfigBytes {
+		return nil, errors.New("config.json exceeds 1 MiB limit")
+	}
 	var values map[string]json.RawMessage
-	dec := json.NewDecoder(io.LimitReader(f, 1<<20))
+	dec := json.NewDecoder(bytes.NewReader(b))
 	if err := dec.Decode(&values); err != nil {
 		return nil, errors.New("invalid config.json; restore valid settings")
 	}
@@ -208,11 +228,23 @@ func Save(home string, c Config) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(home, ".config-*")
+	dir, err := state.Open(home, false)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(f.Name())
+	defer dir.Close()
+	// An unpredictable, exclusive descriptor-relative file cannot be redirected
+	// through an attacker-prepared temp symlink or hardlink.
+	name := ".config-" + rand.Text()
+	f, err := dir.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
+	if err != nil {
+		return err
+	}
+	defer dir.Remove(name)
+	if err = f.Chmod(0600); err != nil {
+		f.Close()
+		return err
+	}
 	if _, err = f.Write(append(b, '\n')); err != nil {
 		f.Close()
 		return err
@@ -224,5 +256,5 @@ func Save(home string, c Config) error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(f.Name(), filepath.Join(home, "config.json"))
+	return dir.Rename(name, "config.json")
 }

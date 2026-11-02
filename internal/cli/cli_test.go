@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -353,4 +354,172 @@ func TestOpenAIExplicitEndpointMayUseAnyPort(t *testing.T) {
 	h := t.TempDir()
 	success(t, run(context.Background(), nil, "--home", h, "config", "set", "endpoint", "http://localhost:11434"))
 	success(t, run(context.Background(), nil, "--home", h, "config", "set", "provider", "openai"))
+}
+
+func TestOversizedConfigPreservesAllState(t *testing.T) {
+	for _, suffix := range []string{"", "INVALID"} {
+		t.Run("suffix_"+suffix, func(t *testing.T) {
+			h := t.TempDir()
+			b := append([]byte("{}"), bytes.Repeat([]byte(" "), 1<<20)...)
+			b = append(b, []byte(suffix)...)
+			path := filepath.Join(h, "config.json")
+			if err := os.WriteFile(path, b, 0600); err != nil {
+				t.Fatal(err)
+			}
+			for _, cmd := range [][]string{{"init", "--timezone", "UTC"}, {"config", "set", "limit", "30"}, {"config", "show"}} {
+				r := run(context.Background(), nil, append([]string{"--home", h, "--json"}, cmd...)...)
+				if r.code != 2 || !strings.Contains(r.out, "1 MiB") {
+					t.Fatal(r)
+				}
+				after, err := os.ReadFile(path)
+				if err != nil || !bytes.Equal(b, after) {
+					t.Fatal("oversize config modified", err)
+				}
+				entries, err := os.ReadDir(h)
+				if err != nil || len(entries) != 1 {
+					t.Fatal("created extra state", entries, err)
+				}
+			}
+		})
+	}
+}
+
+func TestStateAliasesAndSpecialFilesAreRejected(t *testing.T) {
+	names := []string{"config.json", "feeder.db", "feeder.lock", "feeder.db-journal", "feeder.db-wal", "feeder.db-shm"}
+	for _, name := range names {
+		for _, kind := range []string{"symlink", "hardlink", "directory", "fifo"} {
+			t.Run(name+"_"+kind, func(t *testing.T) {
+				h := t.TempDir()
+				target := filepath.Join(t.TempDir(), "outside")
+				// Empty DB is significant: SQLite would initialize the outside file.
+				var original []byte
+				if name == "config.json" {
+					original = []byte("{}")
+				}
+				if err := os.WriteFile(target, original, 0644); err != nil {
+					t.Fatal(err)
+				}
+				path := filepath.Join(h, name)
+				var err error
+				switch kind {
+				case "symlink":
+					err = os.Symlink(target, path)
+				case "hardlink":
+					err = os.Link(target, path)
+				case "directory":
+					err = os.Mkdir(path, 0755)
+				case "fifo":
+					err = syscall.Mkfifo(path, 0600)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				before, err := os.Stat(h)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, cmd := range [][]string{{"init", "--timezone", "UTC"}, {"config", "set", "limit", "30"}, {"config", "show"}} {
+					r := run(context.Background(), nil, append([]string{"--home", h, "--json"}, cmd...)...)
+					if r.code == 0 {
+						t.Fatal("accepted unsafe state", r)
+					}
+					b, err := os.ReadFile(target)
+					if err != nil || !bytes.Equal(b, original) {
+						t.Fatal("wrote outside home", err, len(b))
+					}
+					info, err := os.Stat(target)
+					if err != nil || info.Mode().Perm() != 0644 {
+						t.Fatal("chmod outside home", info, err)
+					}
+					entries, err := os.ReadDir(h)
+					if err != nil || len(entries) != 1 {
+						t.Fatal("created state before rejecting alias", entries, err)
+					}
+					after, err := os.Stat(h)
+					if err != nil || after.Mode() != before.Mode() {
+						t.Fatal("changed home before rejection", err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestJSONParseErrorsIgnoreFlagPosition(t *testing.T) {
+	for _, bad := range []string{"nonsense", "--bad"} {
+		var previous string
+		for _, front := range []bool{true, false} {
+			h := filepath.Join(t.TempDir(), "absent")
+			args := []string{"--home", h}
+			if front {
+				args = append(args, "--json", bad)
+			} else {
+				args = append(args, bad, "--json")
+			}
+			r := run(context.Background(), nil, args...)
+			if r.code != 2 || r.err != "" {
+				t.Fatal(r)
+			}
+			dec := json.NewDecoder(strings.NewReader(r.out))
+			var e map[string]any
+			if err := dec.Decode(&e); err != nil || e["status"] != "error" || e["schema_version"] != float64(1) {
+				t.Fatal(r, err)
+			}
+			if err := dec.Decode(new(any)); err != io.EOF {
+				t.Fatal("expected exactly one envelope", r, err)
+			}
+			if previous != "" && r.out != previous {
+				t.Fatal("output depends on flag order", previous, r.out)
+			}
+			previous = r.out
+			if _, err := os.Stat(h); !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("created state", err)
+			}
+		}
+	}
+	// --json is a value of a known flag, or a positional after --, not intent.
+	for _, args := range [][]string{{"--home", "--json", "nonsense"}, {"nonsense", "--", "--json"}, {"config", "set", "model", "--", "--json", "extra"}, {"--bad", "--json=false"}, {"--json", "--bad", "--json=false"}, {"--bad", "--timezone", "--json"}} {
+		h := filepath.Join(t.TempDir(), "absent")
+		// Insert another home before args so no malformed command can use real state.
+		r := run(context.Background(), nil, append([]string{"--home", h}, args...)...)
+		if r.code != 2 || r.out != "" || r.err == "" {
+			t.Fatal(args, r)
+		}
+		if _, err := os.Stat(h); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("created state", err)
+		}
+	}
+}
+
+func TestLiteralJSONValueRemainsHumanOutput(t *testing.T) {
+	h := t.TempDir()
+	r := run(context.Background(), nil, "--home", h, "config", "set", "model", "--", "--json")
+	success(t, r)
+	var settings map[string]any
+	if err := json.Unmarshal([]byte(r.out), &settings); err != nil || settings["model"] != "--json" || settings["schema_version"] != nil {
+		t.Fatal("misread model as output intent", r, err)
+	}
+}
+
+func TestSymlinkHomeIsRejectedWithoutChmod(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.Mkdir(outside, 0755); err != nil {
+		t.Fatal(err)
+	}
+	h := filepath.Join(t.TempDir(), "home")
+	if err := os.Symlink(outside, h); err != nil {
+		t.Fatal(err)
+	}
+	r := run(context.Background(), nil, "--home", h, "init", "--timezone", "UTC")
+	if r.code == 0 {
+		t.Fatal(r)
+	}
+	info, err := os.Stat(outside)
+	if err != nil || info.Mode().Perm() != 0755 {
+		t.Fatal("changed outside directory permissions", info, err)
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil || len(entries) != 0 {
+		t.Fatal("created outside state", entries, err)
+	}
 }

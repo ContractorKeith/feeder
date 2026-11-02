@@ -10,7 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/gofrs/flock"
+	"github.com/ContractorKeith/feeder/internal/state"
+	"golang.org/x/sys/unix"
 	_ "modernc.org/sqlite"
 )
 
@@ -21,34 +22,60 @@ func Lock(ctx context.Context, home string, wait time.Duration) (func() error, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(home, 0700); err != nil {
+	dir, err := state.Open(home, true)
+	if err != nil {
 		return nil, err
 	}
-	if err := os.Chmod(home, 0700); err != nil {
+	defer dir.Close()
+	if err = dir.Private(); err != nil {
 		return nil, err
 	}
-	lock := flock.New(filepath.Join(home, "feeder.lock"), flock.SetPermissions(0600))
+	file, err := dir.OpenFile("feeder.lock", os.O_CREATE|os.O_RDWR)
+	if err != nil {
+		return nil, err
+	}
+	if err = file.Chmod(0600); err != nil {
+		file.Close()
+		return nil, err
+	}
 	deadline, cancel := context.WithTimeout(ctx, wait)
 	defer cancel()
-	ok, err := lock.TryLockContext(deadline, 20*time.Millisecond)
-	if ctx.Err() != nil {
-		lock.Close()
-		return nil, ctx.Err()
-	}
-	if !ok {
-		lock.Close()
-		if err == nil || errors.Is(err, context.DeadlineExceeded) {
-			return nil, ErrBusy
+	for {
+		if err = ctx.Err(); err != nil {
+			file.Close()
+			return nil, err
 		}
-		return nil, err
+		err = unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+		if err == nil {
+			return file.Close, nil
+		}
+		if !errors.Is(err, unix.EWOULDBLOCK) && !errors.Is(err, unix.EAGAIN) {
+			file.Close()
+			return nil, err
+		}
+		timer := time.NewTimer(20 * time.Millisecond)
+		select {
+		case <-deadline.Done():
+			timer.Stop()
+			file.Close()
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return nil, ErrBusy
+		case <-timer.C:
+		}
 	}
-	return lock.Close, nil
 }
 
 // Open migrates transactionally and refuses to overwrite a newer or corrupt DB.
 func Open(ctx context.Context, home string, now time.Time) (*sql.DB, error) {
 	path := filepath.Join(home, "feeder.db")
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	dir, err := state.Open(home, false)
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+	f, err := dir.OpenFile("feeder.db", os.O_CREATE|os.O_RDWR)
 	if err != nil {
 		return nil, err
 	}
@@ -59,6 +86,7 @@ func Open(ctx context.Context, home string, now time.Time) (*sql.DB, error) {
 	if err = f.Close(); err != nil {
 		return nil, err
 	}
+
 	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: path}).String())
 	if err != nil {
 		return nil, err

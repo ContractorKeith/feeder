@@ -7,12 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/ContractorKeith/feeder/internal/app"
 	"github.com/ContractorKeith/feeder/internal/config"
 	"github.com/ContractorKeith/feeder/internal/storage"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 type problem struct {
@@ -184,7 +186,7 @@ Set endpoint/model before enabling those settings. Overrides are never saved.`}
 	case strings.HasPrefix(err.Error(), "unknown command "):
 		code, kind, message = 2, "usage", "unknown command; see --help"
 	}
-	if asJSON {
+	if jsonIntent(root, args) {
 		if e := json.NewEncoder(out).Encode(envelope{1, "error", nil, []string{}, []problem{{kind, message}}}); e != nil {
 			fmt.Fprintln(stderr, "failed to write JSON output")
 			return 1
@@ -193,4 +195,52 @@ Set endpoint/model before enabling those settings. Overrides are never saved.`}
 		fmt.Fprintln(stderr, message)
 	}
 	return code
+}
+
+// jsonIntent recovers output intent when Cobra stops at an earlier bad token.
+// Known value-taking flags consume their next token, even when it is --json;
+// an option terminator ends scanning. Unknown flags cannot consume known flags.
+func jsonIntent(root *cobra.Command, args []string) bool {
+	var lookup func(*cobra.Command, string) *pflag.Flag
+	lookup = func(cmd *cobra.Command, name string) *pflag.Flag {
+		if f := cmd.Flags().Lookup(name); f != nil {
+			return f
+		}
+		if f := cmd.PersistentFlags().Lookup(name); f != nil {
+			return f
+		}
+		for _, child := range cmd.Commands() {
+			if f := lookup(child, name); f != nil {
+				return f
+			}
+		}
+		return nil
+	}
+	enabled := false
+	for i := 0; i < len(args); i++ {
+		token := args[i]
+		if token == "--" {
+			break
+		}
+		if !strings.HasPrefix(token, "--") {
+			continue
+		}
+		name, value, attached := strings.Cut(strings.TrimPrefix(token, "--"), "=")
+		flag := lookup(root, name)
+		if flag == nil {
+			continue
+		}
+		if name == "json" {
+			if !attached {
+				enabled = true
+			} else if v, err := strconv.ParseBool(value); err == nil {
+				enabled = v
+			}
+			continue
+		}
+		if !attached && flag.NoOptDefVal == "" {
+			i++
+		}
+	}
+	return enabled
 }
