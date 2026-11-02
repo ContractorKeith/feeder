@@ -1,18 +1,22 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/ContractorKeith/feeder/internal/storage"
 	"github.com/mmcdole/gofeed"
+	"golang.org/x/net/html/charset"
 )
 
 const MaxFeedBytes = 5 << 20
@@ -114,6 +118,9 @@ func fetchOne(ctx context.Context, client *http.Client, timeout time.Duration, f
 	if len(body) > MaxFeedBytes {
 		return fail("feed body exceeds 5 MiB limit")
 	}
+	if err := completeFeedDocument(body); err != nil {
+		return fail("invalid RSS or Atom feed document")
+	}
 	parsed, err := gofeed.NewParser().ParseString(string(body))
 	if err != nil || (parsed.FeedType != "rss" && parsed.FeedType != "atom") {
 		return fail("invalid RSS or Atom feed")
@@ -149,4 +156,39 @@ func fetchOne(ctx context.Context, client *http.Client, timeout time.Duration, f
 		items = append(items, storage.Item{Key: key, Title: title, URL: link, Content: content, Hash: hash, Published: published})
 	}
 	return items, resp.Header.Get("ETag"), resp.Header.Get("Last-Modified"), false, nil
+}
+
+// gofeed stops at the feed's closing element. Check the entire bounded body so
+// a valid prefix cannot hide malformed trailing data or another document.
+func completeFeedDocument(body []byte) error {
+	d := xml.NewDecoder(bytes.NewReader(bytes.TrimPrefix(body, []byte{0xef, 0xbb, 0xbf})))
+	d.CharsetReader = charset.NewReaderLabel
+	// Keep gofeed's tolerance for feed internals; enforce document boundaries.
+	d.Strict = false
+	depth, roots := 0, 0
+	for {
+		token, err := d.Token()
+		if err == io.EOF && roots == 1 && depth == 0 {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		switch v := token.(type) {
+		case xml.StartElement:
+			if depth == 0 {
+				roots++
+				if roots > 1 {
+					return errors.New("multiple feed roots")
+				}
+			}
+			depth++
+		case xml.EndElement:
+			depth--
+		case xml.CharData:
+			if depth == 0 && strings.TrimSpace(string(v)) != "" {
+				return errors.New("text outside feed root")
+			}
+		}
+	}
 }

@@ -429,3 +429,27 @@ func TestNormalizedSubscriptionsAndInvalidOPMLDoNotMutate(t *testing.T) {
 		t.Fatal("invalid import created state", err)
 	}
 }
+
+func TestTrailingFeedDataDoesNotCommit(t *testing.T) {
+	for _, suffix := range []string{"<broken>", "garbage", "<rss><channel/></rss>"} {
+		t.Run(suffix, func(t *testing.T) {
+			c := newCollection(t)
+			body := rss(entry("old", "Original", "keep"))
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("ETag", "candidate")
+				fmt.Fprint(w, body)
+			}))
+			defer server.Close()
+			success(t, c.call("feeds", "add", server.URL))
+			success(t, c.call("fetch"))
+			before := c.items()[0]
+			body = rss(entry("new", "New", "must not commit")) + suffix
+			if r := c.call("fetch", "--json"); r.code != 3 {
+				t.Fatal("accepted trailing malformed feed", r)
+			}
+			if items := c.items(); len(items) != 1 || items[0] != before {
+				t.Fatal("malformed feed changed stored items", items)
+			}
+		})
+	}
+}
