@@ -1,5 +1,29 @@
 # Packaging and release checklist
 
+## Published v0.1.0
+
+[Release](https://github.com/ContractorKeith/feeder/releases/tag/v0.1.0) from
+`8f57ffed682e94fba3d8bf65b1dca3d4df983a85`, published 2026-11-03.
+[Release workflow](https://github.com/ContractorKeith/feeder/actions/runs/41647780951)
+passed Linux/macOS acceptance, four-platform packaging, native Linux/macOS smoke
+and publication. Public downloads were validated again and matched the workflow
+artifacts. Native arm64 version/init/empty digest also passed on the Mac Studio.
+
+| Archive | SHA256 |
+|---|---|
+| feeder_v0.1.0_linux_amd64.tar.gz | a01aef0b349fdd466b42cba798fe8de83ba9c352681b75fc8ace41a776fa92ee |
+| feeder_v0.1.0_linux_arm64.tar.gz | 408571cc7f40ee5406558206a1da21970e4fe270f52eaaf468cca4bb9f4fd072 |
+| feeder_v0.1.0_darwin_amd64.tar.gz | 012868f77649400e7b9559b3b68b320f510d181936fec248913642e4adbd41e4 |
+| feeder_v0.1.0_darwin_arm64.tar.gz | 1ea71339fd86737c73c147b5189ca26d8c3bea6e7bf6ae7ce574dbbedc2f7aee |
+
+Homebrew formula published in ContractorKeith/homebrew-tap at `128cce6` after
+`brew install --build-from-source ContractorKeith/tap/feeder` and
+`brew test ContractorKeith/tap/feeder` passed on Linux. No macOS Homebrew install
+is claimed; native macOS package execution passed separately. Install with
+`brew install ContractorKeith/tap/feeder`.
+
+## Implementation context
+
 M0–M5 are merged through 6637a69c2ddda1935a14a5122f41406f6000d115.
 Parent review, acceptance, four-platform packaging and native Linux/macOS package
 smokes passed. A disposable real-feed excerpt smoke also passed. Real-model evaluation, manual summary review and combined live feed/model smoke

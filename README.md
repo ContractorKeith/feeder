@@ -114,6 +114,10 @@ Not affiliated with other projects named feeder.
 
 ## Install and uninstall
 
+```sh
+brew install ContractorKeith/tap/feeder
+```
+
 Download binaries from the [GitHub releases](https://github.com/ContractorKeith/feeder/releases). You can also build from source using the pinned Go version in go.mod:
 
 ```sh
@@ -133,7 +137,7 @@ archive and SHA256SUMS from that release, then verify **before** extraction:
 complete check, or check the matching checksum row). Extract into a new temporary
 directory and install its feeder as above. See [packaging/release checklist](docs/release.md)
 for exact asset names, locally testable formula generation and native smoke.
-Generated formulas use real archive hashes; a tap formula is published separately after release assets are verified.
+The published Homebrew formula uses the verified release archive hashes.
 
 For a disposable first run:
 
@@ -151,7 +155,7 @@ full article. Summaries require explicit opt-in and an already configured model;
 see the [manual evaluation kit and disposable live smoke](docs/evaluation/README.md).
 
 Uninstall the manually installed executable with `rm "$HOME/.local/bin/feeder"`.
-For a future tap installation use `brew uninstall feeder`. Neither removes
+For a tap installation use `brew uninstall feeder`. Neither removes
 subscriptions or history. Stop any schedules you installed yourself using the
 [scheduling instructions](docs/scheduling.md). Back up state before intentionally
 removing it; removing the binary is enough to stop manual use.
