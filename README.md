@@ -2,7 +2,7 @@
 
 A local Go CLI for collecting RSS/Atom feeds and producing personal source-linked digests. Feed excerpts are the default, with opt-in summaries through Ollama or an OpenAI-compatible endpoint.
 
-**Status:** M0–M5 merged through main 6637a69. Parent acceptance, Linux/macOS CI, four-platform packaging and native package smokes passed. Real-model evaluation and manual summary review remain pending before release. No v1 release yet. MIT licensed; Linux and macOS, pure-Go SQLite.
+**Status:** v0.1.0. MIT licensed; Linux and macOS, pure-Go SQLite. Acceptance, four-platform packaging, native Linux/macOS smoke and real MLX evaluation passed. [Release evidence](docs/evaluation/2026-11-03-mlx.md).
 
 ```sh
 go build -o feeder ./cmd/feeder
@@ -114,8 +114,7 @@ Not affiliated with other projects named feeder.
 
 ## Install and uninstall
 
-No v1 release or Homebrew tap is published yet. For now, build from source using
-the pinned Go version in go.mod:
+Download binaries from the [GitHub releases](https://github.com/ContractorKeith/feeder/releases). You can also build from source using the pinned Go version in go.mod:
 
 ```sh
 go build -trimpath -o feeder ./cmd/feeder
@@ -127,15 +126,14 @@ feeder --help
 
 Persist that PATH in your shell configuration yourself if needed. Linux/macOS
 release archives will contain a single executable, MIT license, README and build
-metadata. After the parent publishes a release, download the matching OS/CPU
+metadata. Download the matching OS/CPU
 archive and SHA256SUMS from that release, then verify **before** extraction:
 `sha256sum --check --ignore-missing SHA256SUMS` on Linux, or
 `shasum -a 256 --check SHA256SUMS` on macOS (download all four archives for a
 complete check, or check the matching checksum row). Extract into a new temporary
 directory and install its feeder as above. See [packaging/release checklist](docs/release.md)
 for exact asset names, locally testable formula generation and native smoke.
-Generated formulas use real archive hashes; a tap install command will be supplied
-only after the parent publishes a tap.
+Generated formulas use real archive hashes; a tap formula is published separately after release assets are verified.
 
 For a disposable first run:
 

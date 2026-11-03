@@ -2,8 +2,9 @@
 
 M0–M5 are merged through 6637a69c2ddda1935a14a5122f41406f6000d115.
 Parent review, acceptance, four-platform packaging and native Linux/macOS package
-smokes passed. A disposable real-feed excerpt smoke also passed. Real-model
-evaluation, manual summary review and combined live feed/model smoke remain pending.
+smokes passed. A disposable real-feed excerpt smoke also passed. Real-model evaluation, manual summary review and combined live feed/model smoke
+passed with the existing Studio MLX Qwen3.8-27B-4bit model; see
+[evidence](evaluation/2026-11-03-mlx.md). v0.1.0 is the first release.
 No release tag or tap publication is authorized by implementation of this kit.
 
 ## Build and inspect a candidate
