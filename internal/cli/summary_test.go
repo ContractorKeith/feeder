@@ -244,14 +244,14 @@ func TestSummaryValidationBeforeRefresh(t *testing.T) {
 	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; fmt.Fprint(w, rss("")) }))
 	defer feed.Close()
 	success(t, c.call("feeds", "add", feed.URL))
-	for _, extra := range [][]string{{"--model", ""}, {"--provider", "bad"}, {"--provider", "openai", "--endpoint", feed.URL}, {"--endpoint", "http://user:secret@example.org"}, {"--max-input-chars", "0"}, {"--max-output-tokens", "0"}, {"--endpoint", "http://example.org:0"}, {"--endpoint", "http://example.org?"}} {
+	for _, extra := range [][]string{{"--model", ""}, {"--provider", "bad"}, {"--provider", "openai", "--endpoint", ""}, {"--endpoint", "http://user:secret@example.org"}, {"--max-input-chars", "0"}, {"--max-output-tokens", "0"}, {"--endpoint", "http://example.org:0"}, {"--endpoint", "http://example.org?"}} {
 		r := c.call(append([]string{"digest", "--summarize", "--model", "fixture", "--json"}, extra...)...)
 		if r.code != 2 || calls != 0 || c.feeds()[0].Initialized {
 			t.Fatal(extra, r, calls)
 		}
 	}
 	c.home = filepath.Join(t.TempDir(), "absent")
-	r := c.call("digest", "--summarize", "--provider", "openai", "--model", "fixture", "--endpoint", feed.URL)
+	r := c.call("digest", "--summarize", "--provider", "openai", "--model", "fixture")
 	if r.code != 2 {
 		t.Fatal(r)
 	}

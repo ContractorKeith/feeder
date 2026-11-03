@@ -39,7 +39,11 @@ func Prepare(c config.Config, getenv func(string) string) (Settings, error) {
 		return s, nil
 	}
 	if s.Provider == "openai" {
-		s.Key = strings.TrimSpace(getenv("FEEDER_API_KEY"))
+		rawKey := getenv("FEEDER_API_KEY")
+		s.Key = strings.TrimSpace(rawKey)
+		if rawKey == "" && c["api_key_file"] == "" {
+			return s, nil // Local compatible servers such as MLX may not require auth.
+		}
 		if s.Key == "" && c["api_key_file"] != "" {
 			info, err := os.Stat(c["api_key_file"].(string))
 			if err != nil || !info.Mode().IsRegular() {
@@ -57,7 +61,7 @@ func Prepare(c config.Config, getenv func(string) string) (Settings, error) {
 			s.Key = strings.TrimSpace(string(b))
 		}
 		if s.Key == "" || len(s.Key) > 8192 || strings.IndexFunc(s.Key, unicode.IsControl) >= 0 {
-			return s, errors.New("openai requires a valid FEEDER_API_KEY or api_key_file")
+			return s, errors.New("invalid FEEDER_API_KEY or api_key_file")
 		}
 	}
 	return s, nil

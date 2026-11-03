@@ -19,6 +19,28 @@ import (
 
 type transport func(*http.Request) (*http.Response, error)
 
+func TestKeylessCompatibleServer(t *testing.T) {
+	c := config.Defaults()
+	c["summarize"], c["provider"], c["model"] = true, "openai", "local-model"
+	c["endpoint"] = "http://fixture.invalid/v1"
+	s, err := summarizer.Prepare(c, func(string) string { return "" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Transport: transport(func(r *http.Request) (*http.Response, error) {
+		if r.Header.Get("Authorization") != "" {
+			t.Error("keyless request sent authorization")
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"Local summary"}}]}`))}, nil
+	})}
+	if text, err := s.Summarize(context.Background(), client, "source"); err != nil || text != "Local summary" {
+		t.Fatal(text, err)
+	}
+	if _, err := summarizer.Prepare(c, func(string) string { return "  " }); err == nil {
+		t.Fatal("explicit blank credential accepted")
+	}
+}
+
 func (f transport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestInjectedTransportPromptDataAndCancellation(t *testing.T) {
